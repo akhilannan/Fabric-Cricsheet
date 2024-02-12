@@ -7,10 +7,19 @@
 
 # # Initialize Common Functions and Libraries
 
-# In[ ]:
+# In[1]:
 
 
 get_ipython().run_line_magic('run', '"/Common Functions"')
+
+
+# # Set Lakehouse name Parameters
+
+# In[2]:
+
+
+raw_lakehouse = "lh_raw"
+clean_lakehouse = "lh_clean"
 
 
 # # Set Variables
@@ -18,26 +27,52 @@ get_ipython().run_line_magic('run', '"/Common Functions"')
 # In[ ]:
 
 
-raw_df = read_delta_table(raw_table_path, "t_cricsheet")
+# Define the schema for the team_player column, which is a map of team names to player names
 team_player_schema = T.MapType(T.StringType(), T.ArrayType(T.StringType()))
+
+# Define the schema for the array columns, which are arrays of strings
 array_schema  = T.ArrayType(T.StringType())
 
+# Get the paths for the clean and raw tables from the lakehouse
+clean_table_path, raw_table_path = [get_lakehouse_path(lakehouse, "spark", "Tables") for lakehouse in [clean_lakehouse, raw_lakehouse]]
 
-# # Check if Fact table row count is same as Raw table
+# Get the path for the cricsheet table from the raw table path
+cric_table_path = [raw_table_path, "t_cricsheet"]
 
-# In[ ]:
+# Read the cricsheet table as a delta table
+raw_df = read_delta_table(*cric_table_path)
+
+# Unpack the paths for the six tables to be created from the clean table path
+(
+    match_table_path,
+    team_table_path,
+    player_table_path,
+    date_table_path,
+    team_players_table_path,
+    deliveries_table_path
+) = (
+    [clean_table_path] + [tbl]
+    for tbl in [
+        "t_dim_match",
+        "t_dim_team",
+        "t_dim_player",
+        "t_dim_date",
+        "t_fact_team_players",
+        "t_fact_deliveries"
+    ]
+)
 
 
-match_table_to_check = [clean_table_path, "t_dim_match"]
-if delta_table_exists(*match_table_to_check):
-    row_count_match = read_delta_table(*match_table_to_check).count()
+# # Check if Match table row count is same as Raw table
 
-    row_count_raw = raw_df.count()
+# In[4]:
 
-    if(row_count_match == row_count_raw):
-        mssparkutils.notebook.exit(1)
-    else:
-        print("Cricsheet has " + str(row_count_raw - row_count_fact) + " more matches added" )
+
+# Check if the table exists and get the row count
+# If the table does not exist, set min/max match_id to 0 and write mode to Overwrite
+# If the table exists and the row count does not match the dataset, get the min/max match_id from the table and set write mode to Append
+# If the table exists and the row count matches the dataset, exit the Notebook execution
+max_match_id, min_match_id, write_mode = compare_row_count(*match_table_path, *cric_table_path)
 
 
 # # Create Team Player Dataframe and Cache it
@@ -47,45 +82,51 @@ if delta_table_exists(*match_table_to_check):
 
 tpd = (
     raw_df
+    # Select the match_id column and explode the players array from the match_info column
     .select("match_id", 
             F.explode(F.from_json(F.get_json_object("match_info",'$.players'), team_player_schema)))
+    # Select the match_id column, rename the key column as team, and explode the value array as player_name
     .select("match_id",
             F.col("key").alias("team"),
             F.explode("value").alias("player_name"))
+    # Cache the result for faster access
     .cache()
 )
+# Assign an alias to the temporary table
 tpd = tpd.alias("tpd")
 
 
 # # Create t_dim_player
 
-# In[ ]:
+# In[12]:
 
 
 pdf = (
     tpd
     .select("player_name")
-    .distinct()
-    .select(F.monotonically_increasing_id().alias("player_id"), "*")
-    .union(spark.createDataFrame([[-1, "Extras"]]))
+    .distinct() # Get distinct player name
+    .select(F.monotonically_increasing_id().alias("player_id"), "*") # Add a primary key column player_id with increasing IDs
+    .union(spark.createDataFrame([[-1, "Extras"]])) # Append a row for extras with ID -1
 )
 
-create_or_replace_delta_table(pdf, clean_table_path, "t_dim_player")
+# Write the DataFrame to a Delta table
+create_or_replace_delta_table(pdf, *player_table_path)
 
 
 # # Create t_dim_team
 
-# In[ ]:
+# In[13]:
 
 
 tdf = (
     tpd
     .select("team")
-    .distinct()
-    .select(F.monotonically_increasing_id().alias("team_id"), "*")
+    .distinct() # Get distinct team
+    .select(F.monotonically_increasing_id().alias("team_id"), "*") # Add a primary key column team_id with increasing IDs
 )
 
-create_or_replace_delta_table(tdf, clean_table_path, "t_dim_team")
+# Write the DataFrame to a Delta table
+create_or_replace_delta_table(tdf, *team_table_path)
 
 
 # # Create Dataframe aliases for join purpose
@@ -93,26 +134,34 @@ create_or_replace_delta_table(tdf, clean_table_path, "t_dim_team")
 # In[ ]:
 
 
-pdf = read_delta_table(clean_table_path, "t_dim_player").alias("pdf")
-pom = pdf.alias("pom")
-bat = pdf.alias("bat")
-bwl = pdf.alias("bwl")
-fld = pdf.alias("fld")
-nsr = pdf.alias("nsr")
-pot = pdf.alias("pot")
-tdf = read_delta_table(clean_table_path, "t_dim_team").alias("tdf")
-mwn = tdf.alias("mwn")
-elm = tdf.alias("elm")
-twn = tdf.alias("twn")
-fbt = tdf.alias("fbt")
-flt = tdf.alias("flt")
+# Read the player table from the delta table and assign it to pdf
+pdf = read_delta_table(*player_table_path).alias("pdf")
+
+# Create aliases for the player table based on different roles
+pom = pdf.alias("pom") # Player of the match
+bat = pdf.alias("bat") # Batsman
+bwl = pdf.alias("bwl") # Bowler
+fld = pdf.alias("fld") # Fielder
+nsr = pdf.alias("nsr") # Non Striker
+pot = pdf.alias("pot") # Player Out
+
+# Read the team table from the delta table and assign it to tdf
+tdf = read_delta_table(*team_table_path).alias("tdf")
+
+# Create aliases for the team table based on different metrics
+mwn = tdf.alias("mwn") # Match Winner
+elm = tdf.alias("elm") # Match Winner by Eliminator
+twn = tdf.alias("twn") # Toss winner
+fbt = tdf.alias("fbt") # First batting team
+flt = tdf.alias("flt") # First fielding team
 
 
 # # Create t_dim_match
 
-# In[ ]:
+# In[19]:
 
 
+# Define a list of fields to extract from the match_info column, which is a JSON string
 mdf_json_fields = [
     ["dates[0]", "date", "match_date"],
     ["gender", "string", "match_gender"],
@@ -137,18 +186,25 @@ mdf_json_fields = [
     ["player_of_match[0]", "string", "player_of_match"],
     ["players", "string", "team_players"]
 ]
+
+# Create a list of column expressions to select from the raw_df dataframe, using the get_json_object function to parse the match_info column
 mdf_json_select_lst = [
     F.get_json_object("match_info", "$." + json[0]).cast(json[1]).alias(json[2])
     for json in mdf_json_fields
 ]
+
+# Create a new dataframe by selecting the match_id and the columns from the mdf_json_select_lst list
 mdf = (
   raw_df
   .select("match_id",
           *mdf_json_select_lst)
   .select("*", 
           first_team('bat').alias("first_bat"),
-          first_team('field').alias("first_field")))
-mdf = mdf.alias("mdf")
+          first_team('field').alias("first_field"))
+  .alias("mdf")
+)
+
+# Join the mdf dataframe with other dataframes based on the team and player names, using left outer join
 mdf = ( 
   mdf
   .join(twn, twn.team == mdf.toss_winner, 'leftouter' )
@@ -173,8 +229,8 @@ mdf = (
           "mdf.match_won_by_wickets",
           "mdf.match_won_by_innings",
           "mdf.match_result_method",
-          F.concat_ws(", ", F.from_json("umpires", array_schema)).alias("umpires"),
-          F.coalesce("mwn.team_id", "elm.team_id").alias("match_winner_id"),
+          F.concat_ws(", ", F.from_json("umpires", array_schema)).alias("umpires"), # Concatenate the umpires array into a string, separated by commas
+          F.coalesce("mwn.team_id", "elm.team_id").alias("match_winner_id"), # Get the match winner from Eliminator in case Match Winner is empty (eg. tied matches)
           F.col("twn.team_id").alias("toss_winner_id"),
           "mdf.toss_decision",
           F.col("pom.player_id").alias("player_of_match_id"),
@@ -182,21 +238,27 @@ mdf = (
           F.col("flt.team_id").alias("first_field_id"))
 )
 
-create_or_replace_delta_table(mdf, clean_table_path, "t_dim_match")
-
-mdf = read_delta_table(clean_table_path, "t_dim_match").alias("mdf")
+# Create or replace a delta table using the mdf dataframe
+create_or_replace_delta_table(mdf, *match_table_path)
 
 
 # # Create t_dim_date
 
-# In[ ]:
+# In[20]:
 
 
+# Read the delta table and assign it an alias
+mdf = read_delta_table(*match_table_path).alias("mdf")
+
+# Create a new dataframe with the start and end dates of each year in the match table
 dte = (
-    read_delta_table(clean_table_path, "t_dim_match")
+    mdf
+    # Select the minimum and maximum match dates and truncate them to the year level
     .select(F.trunc(F.min("match_date"), "YY").alias("start_date"),
             F.add_months(F.trunc(F.max("match_date"), "YY")-1,12).alias("end_date"))
+    # Generate a sequence of dates from the start to the end date of each year
     .select(F.explode(F.sequence("start_date", "end_date")).alias("date"))
+    # Extract the year, quarter, month number and month name from each date
     .select("date",
             F.year("date").alias("year"),
             F.concat(F.lit("Q"), F.quarter("date")).alias("quarter"),
@@ -204,12 +266,13 @@ dte = (
             F.date_format("date", "MMM").alias("month"))
 )
 
-create_or_replace_delta_table(dte, clean_table_path, "t_dim_date")
+# Create or replace a delta table with the date dataframe at the given path
+create_or_replace_delta_table(dte, *date_table_path)
 
 
 # # Create t_fact_team_players
 
-# In[ ]:
+# In[21]:
 
 
 tpl = (
@@ -217,6 +280,7 @@ tpl = (
   .join(tdf, tdf.team == tpd.team, 'inner' )
   .join(pdf, pdf.player_name == tpd.player_name, 'inner' )
   .join(mdf, mdf.match_id == tpd.match_id, 'inner')
+  # Add all relevant foreign keys based on the joined tables
   .select("tpd.match_id", 
           "tdf.team_id", 
           "pdf.player_id",
@@ -228,14 +292,16 @@ tpl = (
           "mdf.first_field_id")
 )
 
-create_or_replace_delta_table(tpl, clean_table_path, "t_fact_team_players")
+# Create or replace a Delta table using the tpl DataFrame
+create_or_replace_delta_table(tpl, *team_players_table_path)
 
 
 # # Create t_fact_deliveries
 
-# In[ ]:
+# In[22]:
 
 
+# Define a list of fields to extract from the JSON data
 dlv_json_fields = [
     ["batter", "string", "batter_name"],
     ["bowler", "string", "bowler_name"],
@@ -250,38 +316,50 @@ dlv_json_fields = [
     ["wickets[0].player_out", "string", "player_out"],
     ["wickets[0].fielders[0].name", "string", "fielder_name"]
 ]
+
+# Create a list of expressions to select the fields from the JSON data and cast them to the appropriate data types
 dlv_json_select_lst = [
     F.get_json_object("col", "$." + json[0]).cast(json[1]).alias(json[2])
     for json in dlv_json_fields
 ]
+
+# Read the raw data frame and filter by match_id range
 dlv = (
   raw_df
-  .repartition(200)
+  .filter((F.col("match_id") > max_match_id) | (F.col("match_id") <  min_match_id))
+  .repartition(200) # Repartition the data frame to 200 partitions for better performance
   .select("match_id",
-          F.posexplode(F.from_json("match_innings", array_schema)))
+          F.posexplode(F.from_json("match_innings", array_schema))) # Explode the match_innings array into rows
   .select("match_id",
-          (F.col("pos") + 1).alias("innings"),
-          F.get_json_object("col",'$.team').alias("team"),
-          F.posexplode(F.from_json(F.get_json_object("col",'$.overs'), array_schema)))
+          (F.col("pos") + 1).alias("innings"), # Add 1 to the position to get the innings number
+          F.get_json_object("col",'$.team').alias("team"),  # Get the team name from the JSON object
+          F.posexplode(F.from_json(F.get_json_object("col",'$.overs'), array_schema))) # Explode the overs array into rows
   .select("match_id",
           "innings",
           "team",
-          (F.col("pos") + 1).alias("overs"),
-          F.posexplode(F.from_json(F.get_json_object("col",'$.deliveries'), array_schema)))
+          (F.col("pos") + 1).alias("overs"), # Add 1 to the position to get the over number
+          F.posexplode(F.from_json(F.get_json_object("col",'$.deliveries'), array_schema))) # Explode the deliveries array into rows
   .select("*",
-          *dlv_json_select_lst)
+          *dlv_json_select_lst) # Select all the columns and the extracted fields from the JSON data
 )
 
+# Create an alias for the data frame
 dlv = dlv.alias("dlv")
+
+# Define a window specification to partition by match_id and order by team_id
 window_spec = Window.partitionBy("match_id").orderBy("team_id")
+
+# Read fact team players and filter by match_id range
 tpl = (
   read_delta_table(clean_table_path, "t_fact_team_players")
+  .filter((F.col("match_id") > max_match_id) | (F.col("match_id") <  min_match_id))
   .select("match_id", "team_id")
   .distinct()
-  .withColumn("next_team_id", F.coalesce(F.lead("team_id", 1).over(window_spec), F.lag("team_id", 1).over(window_spec)))
+  .withColumn("next_team_id", F.coalesce(F.lead("team_id", 1).over(window_spec), F.lag("team_id", 1).over(window_spec))) # Create a new column with the next team_id in the same match using the window function
   .alias("tpl")
 )
 
+# Join the data frames to get the batting and bowling team ids, and the player ids for each delivery
 dlv = (
         dlv
         .join(mdf, mdf.match_id == dlv.match_id, 'inner')
@@ -313,5 +391,6 @@ dlv = (
                 F.col("fld.player_id").alias("fielder_id"))   
 )
 
-create_or_replace_delta_table(dlv, clean_table_path, "t_fact_deliveries")
+# Create or replace the delta table with the deliveries data
+create_or_replace_delta_table(dlv, *deliveries_table_path, write_mode)
 
