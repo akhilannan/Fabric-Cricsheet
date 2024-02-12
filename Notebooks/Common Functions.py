@@ -20,6 +20,7 @@ get_ipython().system('pip install --upgrade semantic-link --q')
 
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
+from pyspark.sql import DataFrame
 from pyspark.sql.window import Window
 from delta.tables import DeltaTable
 from urllib.request import urlretrieve
@@ -187,10 +188,10 @@ def delta_table_exists(path: str, tbl: str) -> bool:
 
 # # Function for Reading a Delta Table
 
-# In[ ]:
+# In[8]:
 
 
-def read_delta_table(path: str, table_name: str) -> pyspark.sql.DataFrame:
+def read_delta_table(path: str, table_name: str) -> DataFrame:
     """Reads a delta table from a given path and table name.
 
     Args:
@@ -213,7 +214,7 @@ def read_delta_table(path: str, table_name: str) -> pyspark.sql.DataFrame:
 # In[ ]:
 
 
-def create_or_replace_delta_table(df: pyspark.sql.DataFrame, path: str, tbl: str, mode_type: str = "overwrite") -> None:
+def create_or_replace_delta_table(df: DataFrame, path: str, tbl: str, mode_type: str = "overwrite") -> None:
     """Create or replace a delta table from a dataframe.
 
     Args:

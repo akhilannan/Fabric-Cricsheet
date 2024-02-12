@@ -16,8 +16,8 @@ To setup Fabric-Cricsheet, follow these steps:
 2. Navigate to the project directory
 3. Upload the Notebooks to Microsoft Fabric Workspace
 4. Run the Cricsheet Orchestrator notebook from Microsoft Fabric
-5. Get the connection string and clean_lakehouse name
-6. Open the Semantic Model in Tabular Editor and upate the connection
+5. Get the Connection string and SQL analytics endpoint id of clean_lakehouse
+6. Open the Semantic Model in Tabular Editor and upate the connection (DatabaseQuery in Shared Expression)
 7. Deploy the Cricsheet Model to Fabric Workspace via XMLA endpoint
 8. Open the Power BI report and point to the Cricsheet Model in Power BI Service
 

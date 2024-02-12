@@ -3083,7 +3083,7 @@
         "kind": "m",
         "expression": [
           "let",
-          "    database = Sql.Database(\"Fabric SQL Connection String\", \"Lakehouse ID\")",
+          "    database = Sql.Database(\"Fabric SQL Connection String\", \"SQL Analytics Endpoint ID\")",
           "in",
           "    database"
         ],
