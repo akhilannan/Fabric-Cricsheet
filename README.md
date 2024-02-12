@@ -1,6 +1,6 @@
 # Fabric-Cricsheet
 
-Fabric-Cricsheet is a project that aims to buid an end-to-end Lakehouse solution using Microsoft Fabric for analyzing [Cricsheet](https://cricsheet.org/downloads/) data, a collection of ball-by-ball match data for various formats and competitions of cricket. 
+Fabric-Cricsheet is a project that aims to build an end-to-end Lakehouse solution using Microsoft Fabric, a cloud-native data platform that enables you to ingest, store, process, and analyze data at scale. Fabric-Cricsheet uses [Cricsheet](https://cricsheet.org/downloads/) data, a collection of ball-by-ball match data for various formats and competitions of cricket, to provide insights and visualizations for cricket fans and analysts.
 
 ## Features
 

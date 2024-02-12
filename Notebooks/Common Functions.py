@@ -53,10 +53,18 @@ def get_lakehouse_id(lakehouse_name: str) -> int:
     Raises:
         ValueError: If no Lakehouse item with the given display name is found.
     """
+    # Get the list of all Lakehouse items
     lakehouse_items = fabric.list_items("Lakehouse")
+
+    # Filter the list by matching the display name with the given argument
     query_result = lakehouse_items.query(f"`Display Name` == '{lakehouse_name}'")
+
+    # Check if the query result is empty
     if query_result.empty:
+        # If yes, raise an exception with an informative message
         raise ValueError(f"No Lakehouse item with display name '{lakehouse_name}' found.")
+        
+    # If no, return the first value of the Id column as an integer
     return query_result.Id.values[0]
 
 
@@ -65,7 +73,7 @@ def get_lakehouse_id(lakehouse_name: str) -> int:
 # In[ ]:
 
 
-def create_lakehouse_if_not_exists(lh_name):
+def create_lakehouse_if_not_exists(lh_name: str) -> str:
     # Use a docstring to explain the function's purpose and parameters
     """Creates a lakehouse with the given name if it does not exist already.
 
@@ -73,11 +81,11 @@ def create_lakehouse_if_not_exists(lh_name):
         lh_name (str): The name of the lakehouse to create.
 
     Returns:
-        int: The ID of the lakehouse.
+        str: The ID of the lakehouse.
     """
     try:
         # Use the fabric API to create a lakehouse and return its ID
-        return fabric.create_lakehouse(lh_name).id
+        return fabric.create_lakehouse(lh_name)
     except FabricHTTPException as exc:
         # If the lakehouse already exists, return its ID
         return get_lakehouse_id(lh_name)
@@ -88,7 +96,7 @@ def create_lakehouse_if_not_exists(lh_name):
 # In[ ]:
 
 
-def create_mount_point(abfss_path, mount_point="/lakehouse/default"):
+def create_mount_point(abfss_path: str, mount_point: str = "/lakehouse/default") -> str:
     """Creates a mount point for an Azure Blob Storage path and returns the local path.
 
     Args:
@@ -157,7 +165,7 @@ def get_lakehouse_path(lakehouse_name: str, path_type: str = "spark", folder_typ
 # In[ ]:
 
 
-def delta_table_exists(path, tbl):
+def delta_table_exists(path: str, tbl: str) -> bool:
   """Check if a delta table exists at the given path.
 
   Parameters:
@@ -168,9 +176,12 @@ def delta_table_exists(path, tbl):
   bool: True if the delta table exists, False otherwise.
   """
   try:
+    # Use the DeltaTable class to access the delta table
     DeltaTable.forPath(spark, os.path.join(path, tbl))
+    # If no exception is raised, the delta table exists
     return True
   except Exception as e:
+    # If an exception is raised, the delta table does not exist
     return False
 
 
@@ -179,7 +190,7 @@ def delta_table_exists(path, tbl):
 # In[ ]:
 
 
-def read_delta_table(path, table_name):
+def read_delta_table(path: str, table_name: str) -> pyspark.sql.DataFrame:
     """Reads a delta table from a given path and table name.
 
     Args:
@@ -202,7 +213,7 @@ def read_delta_table(path, table_name):
 # In[ ]:
 
 
-def create_or_replace_delta_table(df, path, tbl, mode_type="overwrite"):
+def create_or_replace_delta_table(df: pyspark.sql.DataFrame, path: str, tbl: str, mode_type: str = "overwrite") -> None:
     """Create or replace a delta table from a dataframe.
 
     Args:
@@ -330,7 +341,7 @@ def unzip_files(zip_filename: str, filenames: list[str], path: str) -> None:
 # In[ ]:
 
 
-def unzip_parallel(path, zip_filename):
+def unzip_parallel(path: str, zip_filename: str) -> None:
     """Unzip all files from a zip file to a given path in parallel.
 
     Args:
@@ -359,7 +370,7 @@ def unzip_parallel(path, zip_filename):
 # In[ ]:
 
 
-def first_team(toss_decision):
+def first_team(toss_decision, team_player_schema):
   """
   Returns the name of the first team to play based on the toss decision.
 
@@ -369,9 +380,12 @@ def first_team(toss_decision):
   Returns:
   str: The name of the first team to play.
   """
+  # Extract the team names from the JSON column "team_players" using the schema "team_player_schema"
   teams = F.map_keys(F.from_json(F.col("team_players"), team_player_schema))
+  # Assign the first and second team names to variables
   first_team_name = teams[0]
   second_team_name =  teams[1]
+  # Return the name of the first team to play based on the toss decision and the toss winner
   return (F.when(F.col("toss_decision") == toss_decision, F.col("toss_winner"))
           .when((F.col("toss_winner") == first_team_name), second_team_name)
           .otherwise(first_team_name))
@@ -382,7 +396,7 @@ def first_team(toss_decision):
 # In[ ]:
 
 
-def convert_to_json(refresh_objects):
+def convert_to_json(refresh_objects: str) -> list:
     """Converts a string of refresh objects to a list of dictionaries.
 
     Args:
@@ -394,16 +408,20 @@ def convert_to_json(refresh_objects):
     Returns:
         list: A list of dictionaries, each with a "table" key and an optional "partition" key.
     """
-    result = []
+    result = [] # Initialize an empty list to store the converted dictionaries
     if refresh_objects is None or refresh_objects == "All":
-        return result
-    for item in refresh_objects.split("|"):
-        table, *partitions = item.split(":")
-        if partitions:
+        return result # Return an empty list if the input is None or "All"
+    for item in refresh_objects.split("|"): # Loop through each refresh object, separated by "|"
+        table, *partitions = item.split(":") # Split the item by ":" and assign the first element to table and the rest to partitions
+        if partitions: # If there are any partitions
+            # Extend the result list with a list comprehension that creates a dictionary for each partition
+            # The dictionary has the table name and the partition name as keys
+            # The partition name is stripped of any leading or trailing whitespace
             result.extend([{"table": table, "partition": partition.strip()} for partition in ",".join(partitions).split(",")])
-        else:
+        else: # If there are no partitions
+            # Append a dictionary with only the table name as a key to the result list
             result.append({"table": table})
-    return result
+    return result # Return the final list of dictionaries
 
 
 # # Function to call Enhanced Refresh API
@@ -508,35 +526,68 @@ def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, wor
     return df.merge(df_object, how='outer', on='dataset').merge(df_msg, how='outer', on='dataset')
 
 
+# # Check if a Semantic Model exists in the workspace
+
+# In[ ]:
+
+
+def is_dataset_exists(dataset: str, workspace: str = fabric.get_workspace_id()) -> bool:
+    """Check if a dataset exists in a given workspace.
+
+    Args:
+        dataset (str): The name of the dataset to check.
+        workspace (str, optional): The ID or Name of the workspace to search in. Defaults to the current workspace.
+
+    Returns:
+        bool: True if the dataset exists, False otherwise.
+    """
+    return not fabric.list_datasets(workspace).query(f"`Dataset Name` == '{dataset}'").empty
+
+
 # # Function for synchronous refresh of datasets
 
 # In[ ]:
 
 
-def refresh_and_wait(dataset_list):
+def refresh_and_wait(dataset_list: list[str], workspace: str = fabric.get_workspace_id()) -> None:
   """
   Waits for enhanced refresh of given datasets.
 
   Args:
     dataset_list: List of datasets to refresh.
+    workspace: The workspace ID where the datasets are located. Defaults to the current workspace.
 
   Returns:
     None
   """
 
-  request_ids = {dataset: start_enhanced_refresh(dataset) for dataset in dataset_list}
+  # Filter out the datasets that do not exist
+  valid_datasets = [dataset for dataset in dataset_list if is_dataset_exists(dataset, workspace)]
 
+  # Start the enhanced refresh for the valid datasets
+  request_ids = {dataset: start_enhanced_refresh(dataset, workspace) for dataset in valid_datasets}
+
+  # Print the datasets that do not exist
+  invalid_datasets = set(dataset_list) - set(valid_datasets)
+  if invalid_datasets:
+    print(f"The following datasets do not exist: {', '.join(invalid_datasets)}")
+
+  # Loop until all the requests are completed
   while True:
     for dataset, request_id in request_ids.copy().items():
-      request_status_df = get_enhanced_refresh_details(dataset, request_id)
+      # Get the status and details of the current request
+      request_status_df = get_enhanced_refresh_details(dataset, request_id, workspace)
       request_status = request_status_df['status'].iloc[0]
 
+      # If the request is not unknown, print the details and remove it from the dictionary
       if request_status != "Unknown":
         print(request_status_df.to_markdown())
         del request_ids[dataset]
 
+    # If there are no more requests, exit the loop
     if not request_ids:
       break
+    # Otherwise, wait for 30 seconds before checking again
     else:
       time.sleep(30)
 

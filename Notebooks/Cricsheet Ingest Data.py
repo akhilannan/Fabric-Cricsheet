@@ -7,7 +7,7 @@
 
 # # Initialize Common Functions and Libraries
 
-# In[10]:
+# In[ ]:
 
 
 get_ipython().run_line_magic('run', '"/Common Functions"')
@@ -15,10 +15,10 @@ get_ipython().run_line_magic('run', '"/Common Functions"')
 
 # # Set Lakehouse name Parameter
 
-# In[2]:
+# In[ ]:
 
 
-raw_lakehouse = "lh_raw"
+raw_lakehouse = "lh_bronze"
 
 
 # # Initialize Variables
@@ -48,7 +48,7 @@ lake_zip_file = lake_path + file_name
 
 # # Check if Cricsheet has new matches added, else Quit
 
-# In[11]:
+# In[ ]:
 
 
 # Check if the table exists and get the row count

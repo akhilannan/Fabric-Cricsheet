@@ -8,9 +8,9 @@
 # In[ ]:
 
 
-raw_lakehouse = "lh_raw"
-clean_lakehouse = "lh_clean"
-dataset_list = "Cricsheet Model" # Pass multiple coma seperated "model1,model2"
+raw_lakehouse = "lh_bronze"
+clean_lakehouse = "lh_gold"
+semantic_model_list = "Cricsheet Model" # Pass multiple coma seperated "model1,model2"
 
 
 # # Create DAG
@@ -36,9 +36,9 @@ DAG = {
         {
             "name": "Cricsheet Model Refresh",
             "path": "Cricsheet Model Refresh",
-            "timeoutPerCellInSeconds": 1800,
+            "timeoutPerCellInSeconds": 180,
             "dependencies": ["Cricsheet Build Facts and Dimensions"],
-            "args": {"dataset_list": dataset_list}
+            "args": {"semantic_model_list": semantic_model_list}
         }
     ]
 }

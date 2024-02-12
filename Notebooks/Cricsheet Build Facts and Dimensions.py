@@ -7,7 +7,7 @@
 
 # # Initialize Common Functions and Libraries
 
-# In[1]:
+# In[ ]:
 
 
 get_ipython().run_line_magic('run', '"/Common Functions"')
@@ -15,11 +15,11 @@ get_ipython().run_line_magic('run', '"/Common Functions"')
 
 # # Set Lakehouse name Parameters
 
-# In[2]:
+# In[ ]:
 
 
-raw_lakehouse = "lh_raw"
-clean_lakehouse = "lh_clean"
+raw_lakehouse = "lh_bronze"
+clean_lakehouse = "lh_gold"
 
 
 # # Set Variables
@@ -65,7 +65,7 @@ raw_df = read_delta_table(*cric_table_path)
 
 # # Check if Match table row count is same as Raw table
 
-# In[4]:
+# In[ ]:
 
 
 # Check if the table exists and get the row count
@@ -98,7 +98,7 @@ tpd = tpd.alias("tpd")
 
 # # Create t_dim_player
 
-# In[12]:
+# In[ ]:
 
 
 pdf = (
@@ -115,7 +115,7 @@ create_or_replace_delta_table(pdf, *player_table_path)
 
 # # Create t_dim_team
 
-# In[13]:
+# In[ ]:
 
 
 tdf = (
@@ -158,7 +158,7 @@ flt = tdf.alias("flt") # First fielding team
 
 # # Create t_dim_match
 
-# In[19]:
+# In[ ]:
 
 
 # Define a list of fields to extract from the match_info column, which is a JSON string
@@ -199,8 +199,8 @@ mdf = (
   .select("match_id",
           *mdf_json_select_lst)
   .select("*", 
-          first_team('bat').alias("first_bat"),
-          first_team('field').alias("first_field"))
+          first_team('bat', team_player_schema).alias("first_bat"),
+          first_team('field', team_player_schema).alias("first_field"))
   .alias("mdf")
 )
 
@@ -244,7 +244,7 @@ create_or_replace_delta_table(mdf, *match_table_path)
 
 # # Create t_dim_date
 
-# In[20]:
+# In[ ]:
 
 
 # Read the delta table and assign it an alias
@@ -272,7 +272,7 @@ create_or_replace_delta_table(dte, *date_table_path)
 
 # # Create t_fact_team_players
 
-# In[21]:
+# In[ ]:
 
 
 tpl = (
@@ -298,7 +298,7 @@ create_or_replace_delta_table(tpl, *team_players_table_path)
 
 # # Create t_fact_deliveries
 
-# In[22]:
+# In[ ]:
 
 
 # Define a list of fields to extract from the JSON data
