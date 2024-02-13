@@ -488,7 +488,7 @@ def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, wor
         workspace_name (str, optional): The name of the workspace. Defaults to name workspace where Notebook reside.
 
     Returns:
-        pd.DataFrame: A dataframe with the refresh details, objects, messages, and time taken in seconds.
+        pd.DataFrame: A dataframe with the refresh details, messages, and time taken in seconds.
     """
     # Get the refresh execution details from fabric
     refresh_details = fabric.get_refresh_execution_details(workspace=workspace_name, dataset=dataset_name, refresh_request_id=refresh_request_id)
@@ -511,12 +511,6 @@ def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, wor
     df['start_time'] = df['start_time'].astype(str).str.slice(0, 16)
     df['end_time'] = df['end_time'].astype(str).str.slice(0, 16)
     
-    # Create a dataframe with the refresh objects
-    df_object = pd.DataFrame(refresh_details.objects)
-    
-    # Add the dataset column to df_object
-    df_object = df_object.assign(dataset=dataset_name)
-    
     # Create a dataframe with the refresh messages
     df_msg = pd.DataFrame(refresh_details.messages)
     
@@ -524,7 +518,7 @@ def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, wor
     df_msg = df_msg.assign(dataset=dataset_name)
     
     # Merge the dataframes on the dataset column and return the result
-    return df.merge(df_object, how='outer', on='dataset').merge(df_msg, how='outer', on='dataset')
+    return df.merge(df_msg, how='outer', on='dataset')
 
 
 # # Check if a Semantic Model exists in the workspace
@@ -560,6 +554,9 @@ def refresh_and_wait(dataset_list: list[str], workspace: str = fabric.get_worksp
 
   Returns:
     None
+
+  Raises:
+    Exception: If any of the datasets failed to refresh.
   """
 
   # Filter out the datasets that do not exist
@@ -574,20 +571,29 @@ def refresh_and_wait(dataset_list: list[str], workspace: str = fabric.get_worksp
     print(f"The following datasets do not exist: {', '.join(invalid_datasets)}")
 
   # Loop until all the requests are completed
+  request_status_dict = {} # Initialize an empty dictionary to store the request status of each dataset
   while True:
     for dataset, request_id in request_ids.copy().items():
       # Get the status and details of the current request
       request_status_df = get_enhanced_refresh_details(dataset, request_id, workspace)
       request_status = request_status_df['status'].iloc[0]
 
-      # If the request is not unknown, print the details and remove it from the dictionary
+      # If the request is not unknown, print the details, store the status in the dictionary, and remove it from the request_ids
       if request_status != "Unknown":
         print(request_status_df.to_markdown())
+        request_status_dict[dataset] = request_status # Store the status in the dictionary
         del request_ids[dataset]
 
     # If there are no more requests, exit the loop
     if not request_ids:
-      break
+      # Check if any of the datasets failed to refresh
+      failed_datasets = [dataset for dataset, status in request_status_dict.items() if status == "Failed"]
+
+      # If there are any failed datasets, raise an exception with the list of them
+      if failed_datasets:
+        raise Exception(f"The following datasets failed to refresh: {', '.join(failed_datasets)}")
+
+      break # Exit the loop
     # Otherwise, wait for 30 seconds before checking again
     else:
       time.sleep(30)
