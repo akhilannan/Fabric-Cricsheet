@@ -35,6 +35,7 @@ import os
 import datetime
 import pytz
 import time
+import uuid
 
 
 # # Function to get Lakehouse ID
@@ -161,6 +162,23 @@ def get_lakehouse_path(lakehouse_name: str, path_type: str = "spark", folder_typ
         return os.path.join(local_path, folder_type)
 
 
+# # Delete a folder
+
+# In[ ]:
+
+
+def delete_folder(folder_path):
+    """Deletes the folder and its contents if it exists.
+
+    Args:
+        folder_path (str): The path of the folder to be deleted.
+    """
+    if mssparkutils.fs.exists(folder_path) is True:
+        mssparkutils.fs.rm(folder_path, True)
+    else:
+        print(f"Folder does not exist: {folder_path}")
+
+
 # # Function to check if Delta Table Exists
 
 # In[ ]:
@@ -188,7 +206,7 @@ def delta_table_exists(path: str, tbl: str) -> bool:
 
 # # Function for Reading a Delta Table
 
-# In[8]:
+# In[ ]:
 
 
 def read_delta_table(path: str, table_name: str) -> DataFrame:
@@ -597,4 +615,77 @@ def refresh_and_wait(dataset_list: list[str], workspace: str = fabric.get_worksp
     # Otherwise, wait for 30 seconds before checking again
     else:
       time.sleep(30)
+
+
+# # Function to get Job ID
+
+# In[ ]:
+
+
+def get_job_id(path = None, table = None, job_name = None, type = "Random") -> str:
+    """Returns a job id based on the type and the delta table.
+
+    Args:
+        path (str, optional): The path to the delta table. Defaults to None.
+        table (str, optional): The name of the delta table. Defaults to None.
+        job_name (str, optional): The name of the job. Defaults to None.
+        type (str, optional): The type of the job id. Can be "Random" or "Latest" or "Latest Parent". Defaults to "Random".
+
+    Returns:
+        str: The job id as a string.
+    """
+    job_id = str(uuid.uuid4()) # default to random job id
+    if type in ["Latest", "Latest Parent"]:
+        try:
+            # Define a helper function to get the job id by condition and column
+            get_job_id_by_condition = lambda condition: read_delta_table(path, table).filter(condition).orderBy(F.desc("start_time")).first()["job_id"]
+            if type == "Latest":
+                job_id = get_job_id_by_condition(F.col("job_name") == job_name)
+            elif type == "Latest Parent":
+                job_id = get_job_id_by_condition(F.col("parent_job_id").isNull())
+        except:
+            pass # ignore any errors
+    return job_id
+
+
+# # Function to Insert or Update Log table
+
+# In[ ]:
+
+
+def insert_or_update_job_table(table_path: str, job_name: str, status: str = "InProgress", is_parent: str = "Y", request_id: str = None) -> None:
+    """
+    Inserts or updates a row in the job table with the given parameters.
+
+    Args:
+        table_path: The path to the delta table folder.
+        job_name: The name of the job.
+        is_parent: A flag indicating if the job is a parent job or not. Defaults to False.
+        request_id: The request ID for the job. If None, a random job ID will be generated. Defaults to None.
+        status: The status of the job. If "InProgress", the job will be inserted as a new row in the table, otherwise updated. Defaults to "InProgress".
+    """
+    table_name = "t_job"
+
+    # Get the job ID and the parent job ID
+    job_id = request_id or get_job_id(table_path, table_name, job_name, "Latest" if status != "InProgress" else None)
+    parent_job_id = None if is_parent == "Y" else get_job_id(table_path, table_name, job_name, "Latest Parent")
+
+    # Create a dataframe with the job details
+    job_df = spark.createDataFrame(
+        [(job_id, parent_job_id, job_name, datetime.datetime.today(), None, status)], 
+        schema='job_id string, parent_job_id string, job_name string, start_time timestamp, end_time timestamp, status string'
+        )    
+
+    # Insert or update the job table based on the status column
+    if status == "InProgress":
+        create_or_replace_delta_table(job_df, table_path, table_name, "append")
+    else:
+        job_df = job_df.withColumn("end_time", F.lit(datetime.datetime.today()))
+        job_delta_table = DeltaTable.forPath(spark, os.path.join(table_path, table_name))
+        (
+            job_delta_table.alias('t')
+            .merge(job_df.alias('s'), 's.job_id = t.job_id')
+            .whenMatchedUpdate(set = {"end_time": "s.end_time", "status": "s.status"})
+            .execute()
+        )
 
