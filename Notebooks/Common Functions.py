@@ -112,11 +112,16 @@ def create_mount_point(abfss_path: str, mount_point: str = "/lakehouse/default")
         ValueError: If the mount point is already in use or invalid.
     """
     
-    # Mount the One Lake path
-    mssparkutils.fs.mount(abfss_path, mount_point)
+    # Check if the mount point exists in fs.mounts
+    if any(m.mountPoint == mount_point for m in mssparkutils.fs.mounts()):
+        # Return the local path of the existing mount point
+        return next(m.localPath for m in mssparkutils.fs.mounts() if m.mountPoint == mount_point)
+    else:
+        # Mount the One Lake path
+        mssparkutils.fs.mount(abfss_path, mount_point)
 
-    # Return the local path of the mount point
-    return next(m.localPath for m in mssparkutils.fs.mounts() if m.mountPoint == mount_point)
+        # Return the local path of the new mount point
+        return next(m.localPath for m in mssparkutils.fs.mounts() if m.mountPoint == mount_point)
 
 
 # # Function to return Lakehouse path
@@ -162,21 +167,59 @@ def get_lakehouse_path(lakehouse_name: str, path_type: str = "spark", folder_typ
         return os.path.join(local_path, folder_type)
 
 
-# # Delete a folder
+# # Delete a Lakehouse item
 
 # In[ ]:
 
 
-def delete_folder(folder_path):
-    """Deletes the folder and its contents if it exists.
+def delete_path(lakehouse, item, folder_type= "Tables"):
+    """Deletes the folder or file if it exists.
 
     Args:
-        folder_path (str): The path of the folder to be deleted.
+        path (str): The path of the folder or file to be deleted.
     """
-    if mssparkutils.fs.exists(folder_path) is True:
-        mssparkutils.fs.rm(folder_path, True)
+    path = get_lakehouse_path(lakehouse, path_type = "spark", folder_type = folder_type)
+    path_item = os.path.join(path, item)
+    if mssparkutils.fs.exists(path_item):
+        mssparkutils.fs.rm(path_item, True)
     else:
-        print(f"Folder does not exist: {folder_path}")
+        print(f"Path does not exist: {path_item}")
+
+
+# # Download Data from URL
+
+# In[ ]:
+
+
+# Define a function that takes the lake path and the base URL as parameters
+def download_data(url, lakehouse, path):
+    """
+    Downloads a zip file from the base URL and extracts it to the lake path.
+
+    Parameters
+    ----------
+    path : str
+        The path of the directory where the data will be stored.
+    url : str
+        The URL of the zip file to be downloaded.
+    lakehouse: str
+        Name of Lakehouse
+
+    Returns
+    -------
+    None
+    """
+    # Create a lake path
+    lake_path = os.path.join(get_lakehouse_path(lakehouse, "local", "Files"), path)
+
+    # Create a file name from the base URL
+    file_path = os.path.join(lake_path, os.path.basename(url))
+
+    # Create a directory for the lake path if it does not exist
+    os.makedirs(lake_path, exist_ok=True)
+
+    # Download the data from the base URL and save the file in the path
+    urlretrieve(url, file_path)
 
 
 # # Function to check if Delta Table Exists
@@ -184,7 +227,7 @@ def delete_folder(folder_path):
 # In[ ]:
 
 
-def delta_table_exists(path: str, tbl: str) -> bool:
+def delta_table_exists(lakehouse_name: str, tbl: str) -> bool:
   """Check if a delta table exists at the given path.
 
   Parameters:
@@ -196,6 +239,7 @@ def delta_table_exists(path: str, tbl: str) -> bool:
   """
   try:
     # Use the DeltaTable class to access the delta table
+    path = get_lakehouse_path(lakehouse_name)
     DeltaTable.forPath(spark, os.path.join(path, tbl))
     # If no exception is raised, the delta table exists
     return True
@@ -209,16 +253,17 @@ def delta_table_exists(path: str, tbl: str) -> bool:
 # In[ ]:
 
 
-def read_delta_table(path: str, table_name: str) -> DataFrame:
+def read_delta_table(lakehouse_name: str, table_name: str) -> DataFrame:
     """Reads a delta table from a given path and table name.
 
     Args:
-        path (str): The path to the delta table directory.
+        lakehouse_name (str): Name of the Lakehouse where the table exists.
         table_name (str): The name of the delta table.
 
     Returns:
         pyspark.sql.DataFrame: A Spark DataFrame with the delta table data.
     """
+    path = get_lakehouse_path(lakehouse_name)
     return (
         spark
         .read
@@ -232,25 +277,54 @@ def read_delta_table(path: str, table_name: str) -> DataFrame:
 # In[ ]:
 
 
-def create_or_replace_delta_table(df: DataFrame, path: str, tbl: str, mode_type: str = "overwrite") -> None:
+def create_or_replace_delta_table(df: DataFrame, lakehouse_name: str, table_name: str, mode_type: str = "overwrite") -> None:
     """Create or replace a delta table from a dataframe.
 
     Args:
         df (pyspark.sql.DataFrame): The dataframe to write to the delta table.
-        path (str): The path where the delta table is stored.
-        tbl (str): The name of the delta table.
+        lakehouse_name (str): Lakehouse where delta table is stored.
+        table_name (str): The name of the delta table.
         mode_type (str, optional): The mode for writing the delta table. Defaults to "overwrite".
 
     Returns:
         None
     """
+    path = get_lakehouse_path(lakehouse_name)
     (
         df
         .write
         .mode(mode_type)
         .option("mergeSchema", "true")
         .format("delta")
-        .save(f'{path}/{tbl}')
+        .save(f'{path}/{table_name}')
+    )
+
+
+# # Function for updating Delta table
+
+# In[ ]:
+
+
+def update_delta_table(lakehouse_name: str, table_name: str, df: DataFrame, merge_condition: str, update_condition: dict) -> None:
+    """Updates a delta table with the given data frame and conditions.
+
+    Args:
+        lakehouse_name (str): The name of the lakehouse.
+        table_name (str): The name of the delta table.
+        df (pyspark.sql.DataFrame): The data frame to merge with the delta table.
+        merge_condition (str): The condition to match the rows for merging.
+        update_condition (dict): The dictionary of column names and values to update when matched.
+
+    Returns:
+        None
+    """
+    table_path = get_lakehouse_path(lakehouse_name)
+    delta_table = DeltaTable.forPath(spark, os.path.join(table_path, table_name))
+    (
+        delta_table.alias('t')
+        .merge(df.alias('s'), merge_condition)
+        .whenMatchedUpdate(set = update_condition)
+        .execute()
     )
 
 
@@ -259,7 +333,7 @@ def create_or_replace_delta_table(df: DataFrame, path: str, tbl: str, mode_type:
 # In[ ]:
 
 
-def get_row_count(table_path: str, table_name: str = None) -> int:
+def get_row_count(lakehouse_or_link: str, table_name: str = None) -> int:
     """Get the row count from a delta table or a web page.
 
     Args:
@@ -275,7 +349,7 @@ def get_row_count(table_path: str, table_name: str = None) -> int:
         try:
             row_count = int(
                 pd
-                .read_html(table_path)[1]
+                .read_html(lakehouse_or_link)[1]
                 .All
                 .str
                 .extract("([\\d,]+)")
@@ -287,7 +361,7 @@ def get_row_count(table_path: str, table_name: str = None) -> int:
             return
     else:
         # Get the row count from the delta table
-        row_count = read_delta_table(table_path, table_name).count()
+        row_count = read_delta_table(lakehouse_or_link, table_name).count()
     
     return row_count
 
@@ -297,43 +371,36 @@ def get_row_count(table_path: str, table_name: str = None) -> int:
 # In[ ]:
 
 
-def compare_row_count(table1_path: str, table1_name: str, table2_path: str, table2_name: str = None) -> tuple[int, int, str]:
+def compare_row_count(table1_lakehouse: str, table1_name: str, table2_lakehouse: str, table2_name: str = None) -> None:
     """Compare the row count of two tables and exit or print the difference.
 
     This function compares the row count of two delta tables or a delta table and a web page.
-    It exits the notebook with code -1 if the row counts are equal, or prints the difference otherwise.
-    It also returns the maximum and minimum match IDs from the first table, and the write mode.
+    It exits the notebook with message "No new data" if the row counts are equal, or prints the difference otherwise.
 
     Args:
-        table_path1: The path of the first table.
-        table_name1: The name of the first table.
-        table_path2: The path of the second table or web page.
-        table_name2: The name of the second table. Defaults to None.
+        table1_lakehouse: The lakehouse of the first table.
+        table1_name: The name of the first table.
+        table2_lakehouse: The lakehouse of the second table or web page.
+        table2_name: The name of the second table. Defaults to None.
 
     Returns:
-        A tuple of (max_match_id, min_match_id, write_mode)
+        None
     """
-    # Initialize the default values
-    max_match_id, min_match_id, write_mode = 0, 0, "overwrite"
     
     # Check if the first table exists as a delta table
-    if delta_table_exists(table1_path, table1_name):
+    if delta_table_exists(table1_lakehouse, table1_name):
         # Get the row count and the match IDs from the first table
-        row_count_1 = get_row_count(table1_path, table1_name)
+        row_count_1 = get_row_count(table1_lakehouse, table1_name)
         
         # Get the row count from the second table or web page
-        row_count_2 = get_row_count(table2_path, table2_name)
+        row_count_2 = get_row_count(table2_lakehouse, table2_name)
         
         # Compare the row counts and exit or print accordingly
         if row_count_1 == row_count_2:
-            # If the row counts are equal, exit the notebook with code -1
-            mssparkutils.notebook.exit(-1)
+            # If the row counts are equal, exit the notebook with message "No new data"
+            mssparkutils.notebook.exit("No new data")
         else:
             print(f"Cricsheet has {row_count_2 - row_count_1} more matches added")
-            max_match_id, min_match_id = read_delta_table(table1_path, table1_name).agg(F.max("match_id"), F.min("match_id")).collect()[0]
-            write_mode = "append"
-    
-    return (max_match_id, min_match_id, write_mode)
 
 
 # # Function to unzip files from an archive
@@ -360,28 +427,44 @@ def unzip_files(zip_filename: str, filenames: list[str], path: str) -> None:
 # In[ ]:
 
 
-def unzip_parallel(path: str, zip_filename: str) -> None:
+def unzip_parallel(lakehouse: str, path: str, filename: str, file_type: str = None) -> None:
     """Unzip all files from a zip file to a given path in parallel.
 
     Args:
+        lakehouse (str): Name of the Lakehouse
         path (str): The destination path for the unzipped files.
-        zip_filename (str): The name of the zip file.
+        filename (str): The name of the zip file without the path.
+        file_type (str): The file type to extract. Defaults to None.
     """
-    # open the zip file
-    with ZipFile(zip_filename, 'r') as handle:
-        # list of all files to unzip
-        files = handle.namelist()
-    # determine chunksize
-    n_workers = 80
-    chunksize = round(len(files) / n_workers)
-    # start the thread pool
-    with ProcessPoolExecutor(n_workers) as exe:
-        # split the copy operations into chunks
-        for i in range(0, len(files), chunksize):
-            # select a chunk of filenames
-            filenames = files[i:(i + chunksize)]
-            # submit the batch copy task
-            _ = exe.submit(unzip_files, zip_filename, filenames, path)
+    # Create a lake path
+    lake_path = os.path.join(get_lakehouse_path(lakehouse, "local", "Files"), path)
+    # join the path and the filename to get the full zip file path
+    zip_filename = os.path.join(lake_path, filename)
+    # check if the zip file exists
+    if os.path.exists(zip_filename):
+        # open the zip file
+        with ZipFile(zip_filename, 'r') as handle:
+            # list of all files to unzip
+            files = handle.namelist()
+        # filter the files by file type if not None
+        if file_type is not None:
+            files = [f for f in files if f.endswith(file_type)]
+        # determine chunksize
+        n_workers = 80
+        chunksize = round(len(files) / n_workers)
+        # start the thread pool
+        with ProcessPoolExecutor(n_workers) as exe:
+            # split the copy operations into chunks
+            for i in range(0, len(files), chunksize):
+                # select a chunk of filenames
+                filenames = files[i:(i + chunksize)]
+                # submit the batch copy task
+                _ = exe.submit(unzip_files, zip_filename, filenames, lake_path)
+        # remove the zip file
+        os.remove(zip_filename)
+    else:
+        # print an error message
+        print(f"The zip file {zip_filename} does not exist.")
 
 
 # # Define Function for getting first team to Bat or Field
@@ -524,6 +607,7 @@ def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, wor
 
     # Calculate the time taken in seconds and add it as a new column
     df['duration_in_sec'] = (df['end_time'].fillna(df['start_time']) - df['start_time']).dt.total_seconds()
+    df['duration_in_sec'] = df['duration_in_sec'].astype(int)
     
     # Convert the start_time and end_time columns to strings with the date format
     df['start_time'] = df['start_time'].astype(str).str.slice(0, 16)
@@ -537,6 +621,43 @@ def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, wor
     
     # Merge the dataframes on the dataset column and return the result
     return df.merge(df_msg, how='outer', on='dataset')
+
+
+# # Cancel Enhanced Refresh
+
+# In[ ]:
+
+
+def cancel_enhanced_refresh(request_id: str, dataset_id: str, workspace_id: str = fabric.get_workspace_id()) -> dict:
+    """Cancel an enhanced refresh request for a Power BI dataset.
+
+    Args:
+        request_id (str): The ID of the refresh request to cancel.
+        dataset_id (str): The ID of the dataset to cancel the refresh for.
+        workspace_id (str, optional): The ID of the workspace containing the dataset. Defaults to the current workspace.
+
+    Returns:
+        dict: The JSON response from the Power BI REST API.
+
+    Raises:
+        FabricHTTPException: If the request fails with a non-200 status code.
+    """
+    
+    # Create a Power BI REST client object
+    client = fabric.PowerBIRestClient()
+
+    # Construct the endpoint URL for the delete request
+    endpoint = f"v1.0/myorg/groups/{workspace_id}/datasets/{dataset_id}/refreshes/{request_id}"
+
+    # Send the delete request and get the response
+    response = client.delete(endpoint)
+
+    # Check the status code and raise an exception if not 200
+    if response.status_code != 200:
+        raise FabricHTTPException(response)
+
+    # Return the JSON response as a dictionary
+    return response.json()
 
 
 # # Check if a Semantic Model exists in the workspace
@@ -562,59 +683,103 @@ def is_dataset_exists(dataset: str, workspace: str = fabric.get_workspace_id()) 
 # In[ ]:
 
 
-def refresh_and_wait(dataset_list: list[str], workspace: str = fabric.get_workspace_id()) -> None:
-  """
-  Waits for enhanced refresh of given datasets.
+def refresh_and_wait(
+    dataset_list: list[str],
+    workspace: str = fabric.get_workspace_id(),
+    logging_lakehouse: str = None,
+    parent_job_name: str = None,
+    job_category: str = "Adhoc",
+) -> None:
+    """
+    Waits for enhanced refresh of given datasets.
 
-  Args:
-    dataset_list: List of datasets to refresh.
-    workspace: The workspace ID where the datasets are located. Defaults to the current workspace.
+    Args:
+      dataset_list: List of datasets to refresh.
+      workspace: The workspace ID where the datasets are located. Defaults to the current workspace.
+      logging_lakehouse: The name of the lakehouse where the job information will be logged. Defaults to None.
+      parent_job_name: The name of the parent job that triggered the refresh. Defaults to None.
 
-  Returns:
-    None
+    Returns:
+      None
 
-  Raises:
-    Exception: If any of the datasets failed to refresh.
-  """
+    Raises:
+      Exception: If any of the datasets failed to refresh.
+    """
 
-  # Filter out the datasets that do not exist
-  valid_datasets = [dataset for dataset in dataset_list if is_dataset_exists(dataset, workspace)]
+    # Filter out the datasets that do not exist
+    valid_datasets = [
+                dataset
+                for dataset in dataset_list
+                if is_dataset_exists(dataset, workspace)
+            ]
 
-  # Start the enhanced refresh for the valid datasets
-  request_ids = {dataset: start_enhanced_refresh(dataset, workspace) for dataset in valid_datasets}
+    # Start the enhanced refresh for the valid datasets
+    request_ids = {
+        dataset: start_enhanced_refresh(dataset, workspace)
+        for dataset in valid_datasets
+    }
 
-  # Print the datasets that do not exist
-  invalid_datasets = set(dataset_list) - set(valid_datasets)
-  if invalid_datasets:
-    print(f"The following datasets do not exist: {', '.join(invalid_datasets)}")
+    # Check if logging_lakehouse has value
+    if logging_lakehouse:
+        # Loop through the request_ids dictionary
+        for dataset, request_id in request_ids.items():
+            # Log entries in logging table
+            insert_or_update_job_table(
+                lakehouse_name=logging_lakehouse,
+                job_name=dataset,
+                parent_job_name=parent_job_name,
+                request_id=request_id,
+                job_category=job_category,
+            )
 
-  # Loop until all the requests are completed
-  request_status_dict = {} # Initialize an empty dictionary to store the request status of each dataset
-  while True:
-    for dataset, request_id in request_ids.copy().items():
-      # Get the status and details of the current request
-      request_status_df = get_enhanced_refresh_details(dataset, request_id, workspace)
-      request_status = request_status_df['status'].iloc[0]
+    # Print the datasets that do not exist
+    invalid_datasets = set(dataset_list) - set(valid_datasets)
+    if invalid_datasets:
+        print(f"The following datasets do not exist: {', '.join(invalid_datasets)}")
 
-      # If the request is not unknown, print the details, store the status in the dictionary, and remove it from the request_ids
-      if request_status != "Unknown":
-        print(request_status_df.to_markdown())
-        request_status_dict[dataset] = request_status # Store the status in the dictionary
-        del request_ids[dataset]
+    # Loop until all the requests are completed
+    request_status_dict = {} # Initialize an empty dictionary to store the request status of each dataset
+    while True:
+        for dataset, request_id in request_ids.copy().items():
+            # Get the status and details of the current request
+            request_status_df = get_enhanced_refresh_details(dataset, request_id, workspace)
+            request_status = request_status_df["status"].iloc[0]
 
-    # If there are no more requests, exit the loop
-    if not request_ids:
-      # Check if any of the datasets failed to refresh
-      failed_datasets = [dataset for dataset, status in request_status_dict.items() if status == "Failed"]
+            # If the request is not unknown, print the details, store the status in the dictionary, and remove it from the request_ids
+            if request_status != "Unknown":
+                if logging_lakehouse:
+                    duration = request_status_df["duration_in_sec"].iloc[0]
+                    msg = request_status_df["Message"].iloc[0]
+                    msg = None if pd.isna(msg) else msg
+                    insert_or_update_job_table(
+                        lakehouse_name=logging_lakehouse,
+                        job_name=dataset,
+                        parent_job_name=parent_job_name,
+                        request_id=request_id,
+                        status=request_status,
+                        duration=duration,
+                        job_category=job_category,
+                        message=msg,
+                    )
+                print(request_status_df.to_markdown())
+                request_status_dict[dataset] = request_status  # Store the status in the dictionary
+                del request_ids[dataset]
 
-      # If there are any failed datasets, raise an exception with the list of them
-      if failed_datasets:
-        raise Exception(f"The following datasets failed to refresh: {', '.join(failed_datasets)}")
-
-      break # Exit the loop
-    # Otherwise, wait for 30 seconds before checking again
-    else:
-      time.sleep(30)
+        # If there are no more requests, exit the loop
+        if not request_ids:
+            # Check if any of the datasets failed to refresh
+            failed_datasets = [
+                dataset
+                for dataset, status in request_status_dict.items()
+                if status == "Failed"
+            ]
+            # If there are any failed datasets, raise an exception with the list of them
+            if failed_datasets:
+                raise Exception(f"The following datasets failed to refresh: {', '.join(failed_datasets)}")
+            break  # Exit the loop
+        # Otherwise, wait for 30 seconds before checking again
+        else:
+            time.sleep(30)
 
 
 # # Function to get Job ID
@@ -622,11 +787,11 @@ def refresh_and_wait(dataset_list: list[str], workspace: str = fabric.get_worksp
 # In[ ]:
 
 
-def get_job_id(path = None, table = None, job_name = None, type = "Random") -> str:
+def get_job_id(lakehouse = None, table = None, job_name = None) -> str:
     """Returns a job id based on the type and the delta table.
 
     Args:
-        path (str, optional): The path to the delta table. Defaults to None.
+        lakehouse (str, optional): The lakehouse of the delta table. Defaults to None.
         table (str, optional): The name of the delta table. Defaults to None.
         job_name (str, optional): The name of the job. Defaults to None.
         type (str, optional): The type of the job id. Can be "Random" or "Latest" or "Latest Parent". Defaults to "Random".
@@ -635,15 +800,11 @@ def get_job_id(path = None, table = None, job_name = None, type = "Random") -> s
         str: The job id as a string.
     """
     job_id = str(uuid.uuid4()) # default to random job id
-    if type in ["Latest", "Latest Parent"]:
+    if lakehouse and table and job_name:
         try:
-            # Define a helper function to get the job id by condition and column
-            get_job_id_by_condition = lambda condition: read_delta_table(path, table).filter(condition).orderBy(F.desc("start_time")).first()["job_id"]
-            if type == "Latest":
-                job_id = get_job_id_by_condition(F.col("job_name") == job_name)
-            elif type == "Latest Parent":
-                job_id = get_job_id_by_condition(F.col("parent_job_id").isNull())
-        except:
+            job_id = read_delta_table(lakehouse, table).filter(F.col("job_name") == job_name).orderBy(F.desc("start_time")).first()["job_id"]
+        except Exception as e:
+            print(f"Returning a random id because of this error: {e}")
             pass # ignore any errors
     return job_id
 
@@ -653,39 +814,131 @@ def get_job_id(path = None, table = None, job_name = None, type = "Random") -> s
 # In[ ]:
 
 
-def insert_or_update_job_table(table_path: str, job_name: str, status: str = "InProgress", is_parent: str = "Y", request_id: str = None) -> None:
+def insert_or_update_job_table(
+    lakehouse_name: str,
+    job_name: str,
+    job_category: str = "Adhoc",
+    status: str = "InProgress",
+    parent_job_name: str = None,
+    request_id: str = None,
+    message: str = None,
+    duration: int = None,
+) -> None:
     """
     Inserts or updates a row in the job table with the given parameters.
 
     Args:
-        table_path: The path to the delta table folder.
+        lakehouse_name: The name of Lakehouse where job table has to be stored.
         job_name: The name of the job.
-        is_parent: A flag indicating if the job is a parent job or not. Defaults to False.
+        job_category: Category of a job. Defaults to Adhoc
+        parent_job_name: Name of the parent job. Defaults to None.
         request_id: The request ID for the job. If None, a random job ID will be generated. Defaults to None.
         status: The status of the job. If "InProgress", the job will be inserted as a new row in the table, otherwise updated. Defaults to "InProgress".
+        message: Captures error message or other messaages if any
     """
-    table_name = "t_job"
+    # Check if lakehouse_name is None and return None if it is
+    if lakehouse_name is None:
+        return None
 
+    table_name = "t_job"
     # Get the job ID and the parent job ID
-    job_id = request_id or get_job_id(table_path, table_name, job_name, "Latest" if status != "InProgress" else None)
-    parent_job_id = None if is_parent == "Y" else get_job_id(table_path, table_name, job_name, "Latest Parent")
+    job_id = request_id or (
+        get_job_id()
+        if status == "InProgress"
+        else get_job_id(lakehouse_name, table_name, job_name)
+    )
+    parent_job_id = (
+        get_job_id(lakehouse_name, table_name, parent_job_name)
+        if parent_job_name
+        else None
+    )
 
     # Create a dataframe with the job details
     job_df = spark.createDataFrame(
-        [(job_id, parent_job_id, job_name, datetime.datetime.today(), None, status)], 
-        schema='job_id string, parent_job_id string, job_name string, start_time timestamp, end_time timestamp, status string'
-        )    
+        [
+            (
+                job_id,
+                parent_job_id,
+                job_name,
+                job_category,
+                datetime.datetime.today(),
+                None,
+                status,
+                message,
+            )
+        ],
+        schema="job_id string, parent_job_id string, job_name string, job_category string, start_time timestamp, end_time timestamp, status string, message string",
+    )
 
     # Insert or update the job table based on the status column
     if status == "InProgress":
-        create_or_replace_delta_table(job_df, table_path, table_name, "append")
+        create_or_replace_delta_table(job_df, lakehouse_name, table_name, "append")
     else:
         job_df = job_df.withColumn("end_time", F.lit(datetime.datetime.today()))
-        job_delta_table = DeltaTable.forPath(spark, os.path.join(table_path, table_name))
-        (
-            job_delta_table.alias('t')
-            .merge(job_df.alias('s'), 's.job_id = t.job_id')
-            .whenMatchedUpdate(set = {"end_time": "s.end_time", "status": "s.status"})
-            .execute()
+        end_time = (
+            f"t.start_time + INTERVAL {duration} SECONDS" if duration else "s.end_time"
         )
+        merge_condition = "s.job_id = t.job_id"
+        update_condition = {
+            "end_time": end_time,
+            "status": "s.status",
+            "message": "s.message",
+        }
+        update_delta_table(
+            lakehouse_name, table_name, job_df, merge_condition, update_condition
+        )
+
+
+# # Function to Execute DAG
+
+# In[ ]:
+
+
+def execute_dag(dag):
+    """Run multiple notebooks in parallel and return the results or raise an exception."""
+    results = mssparkutils.notebook.runMultiple(dag)
+    errors = [] # A list to store the errors
+    for job, data in results.items(): # Loop through the dictionary
+        if data["exception"]: # Check if there is an exception for the job
+            errors.append(f"{job}: {data['exception']}") # Add the error message to the list
+    if errors: # If the list is not empty
+        raise Exception("\n".join(errors)) # Raise an exception with the comma-separated errors
+    else:
+        return results
+
+
+# # Function to Execute and Log
+
+# In[ ]:
+
+
+def execute_and_log(function: callable, log_lakehouse: str, job_name: str, job_category: str, parent_job_name: str = None, request_id: str = None, **kwargs) -> any:
+    """Executes a given function and logs the result to a lakehouse table.
+
+    Args:
+        function: The function to execute.
+        log_lakehouse: The name of the lakehouse to log to.
+        job_name: The name of the job to log.
+        job_category: Category of a job
+        parent_job_name: The name of the parent job, if any.
+        request_id: The request ID for the job, if any.
+        **kwargs: The keyword arguments to pass to the function.
+
+    Returns:
+        The result of the function execution.
+
+    Raises:
+        Exception: If the function execution fails.
+    """
+    result = None
+    insert_or_update_job_table(lakehouse_name=log_lakehouse, job_name=job_name, job_category = job_category, parent_job_name=parent_job_name, request_id = request_id)
+    try:
+        result = function(**kwargs) # assign the result of the function call to a variable
+        insert_or_update_job_table(lakehouse_name=log_lakehouse, job_name=job_name, status="Completed")
+    except Exception as e:
+        msg = str(e)
+        status = 'Completed' if msg == "No new data" else "Failed"
+        insert_or_update_job_table(lakehouse_name=log_lakehouse, job_name=job_name, status=status, message=msg)
+        raise e
+    return result
 

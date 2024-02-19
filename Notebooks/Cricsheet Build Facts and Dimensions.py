@@ -20,6 +20,7 @@ get_ipython().run_line_magic('run', '"/Common Functions"')
 
 raw_lakehouse = "lh_bronze"
 clean_lakehouse = "lh_gold"
+job_name = None
 
 
 # # Set Variables
@@ -37,10 +38,10 @@ array_schema  = T.ArrayType(T.StringType())
 clean_table_path, raw_table_path = [get_lakehouse_path(lakehouse, "spark", "Tables") for lakehouse in [clean_lakehouse, raw_lakehouse]]
 
 # Get the path for the cricsheet table from the raw table path
-cric_table_path = [raw_table_path, "t_cricsheet"]
+cric_table_name = "t_cricsheet"
 
 # Read the cricsheet table as a delta table
-raw_df = read_delta_table(*cric_table_path)
+raw_df = read_delta_table(raw_lakehouse, cric_table_name)
 
 # Unpack the paths for the six tables to be created from the clean table path
 (
@@ -51,7 +52,7 @@ raw_df = read_delta_table(*cric_table_path)
     team_players_table_path,
     deliveries_table_path
 ) = (
-    [clean_table_path] + [tbl]
+    [clean_lakehouse] + [tbl]
     for tbl in [
         "t_dim_match",
         "t_dim_team",
@@ -62,17 +63,26 @@ raw_df = read_delta_table(*cric_table_path)
     ]
 )
 
+# Set job category
+job_category = "Build Star Schema"
 
-# # Check if Match table row count is same as Raw table
+
+# # Check if Cricsheet has new matches added, else Quit
 
 # In[ ]:
 
 
-# Check if the table exists and get the row count
-# If the table does not exist, set min/max match_id to 0 and write mode to Overwrite
-# If the table exists and the row count does not match the dataset, get the min/max match_id from the table and set write mode to Append
-# If the table exists and the row count matches the dataset, exit the Notebook execution
-max_match_id, min_match_id, write_mode = compare_row_count(*match_table_path, *cric_table_path)
+execute_and_log(
+    function=compare_row_count,
+    log_lakehouse=raw_lakehouse,
+    table1_lakehouse=match_table_path[0],
+    table1_name=match_table_path[1],
+    table2_lakehouse=raw_lakehouse,
+    table2_name=cric_table_name,
+    job_name='Compare Row Count Gold',
+    job_category = job_category,
+    parent_job_name=job_name
+    )
 
 
 # # Create Team Player Dataframe and Cache it
@@ -110,7 +120,16 @@ pdf = (
 )
 
 # Write the DataFrame to a Delta table
-create_or_replace_delta_table(pdf, *player_table_path)
+execute_and_log(
+    function=create_or_replace_delta_table,
+    df=pdf,
+    lakehouse_name=player_table_path[0],
+    table_name=player_table_path[1],
+    log_lakehouse=raw_lakehouse,
+    job_name=player_table_path[1],
+    job_category = job_category,
+    parent_job_name=job_name
+    )
 
 
 # # Create t_dim_team
@@ -126,7 +145,16 @@ tdf = (
 )
 
 # Write the DataFrame to a Delta table
-create_or_replace_delta_table(tdf, *team_table_path)
+execute_and_log(
+    function=create_or_replace_delta_table,
+    df=tdf,
+    lakehouse_name=team_table_path[0],
+    table_name=team_table_path[1],
+    log_lakehouse=raw_lakehouse,
+    job_name=team_table_path[1],
+    job_category = job_category,
+    parent_job_name=job_name
+    )
 
 
 # # Create Dataframe aliases for join purpose
@@ -239,7 +267,16 @@ mdf = (
 )
 
 # Create or replace a delta table using the mdf dataframe
-create_or_replace_delta_table(mdf, *match_table_path)
+execute_and_log(
+    function=create_or_replace_delta_table,
+    df=mdf,
+    lakehouse_name=match_table_path[0],
+    table_name=match_table_path[1],
+    log_lakehouse=raw_lakehouse,
+    job_name=match_table_path[1],
+    job_category = job_category,
+    parent_job_name=job_name
+    )
 
 
 # # Create t_dim_date
@@ -267,7 +304,16 @@ dte = (
 )
 
 # Create or replace a delta table with the date dataframe at the given path
-create_or_replace_delta_table(dte, *date_table_path)
+execute_and_log(
+    function=create_or_replace_delta_table,
+    df=dte,
+    lakehouse_name=date_table_path[0],
+    table_name=date_table_path[1],
+    log_lakehouse=raw_lakehouse,
+    job_name=date_table_path[1],
+    job_category = job_category,
+    parent_job_name=job_name
+    )
 
 
 # # Create t_fact_team_players
@@ -293,7 +339,16 @@ tpl = (
 )
 
 # Create or replace a Delta table using the tpl DataFrame
-create_or_replace_delta_table(tpl, *team_players_table_path)
+execute_and_log(
+    function=create_or_replace_delta_table,
+    df=tpl,
+    lakehouse_name=team_players_table_path[0],
+    table_name=team_players_table_path[1],
+    log_lakehouse=raw_lakehouse,
+    job_name=team_players_table_path[1],
+    job_category = job_category,
+    parent_job_name=job_name
+    )
 
 
 # # Create t_fact_deliveries
@@ -323,10 +378,9 @@ dlv_json_select_lst = [
     for json in dlv_json_fields
 ]
 
-# Read the raw data frame and filter by match_id range
+# Read the raw data frame
 dlv = (
   raw_df
-  .filter((F.col("match_id") > max_match_id) | (F.col("match_id") <  min_match_id))
   .repartition(200) # Repartition the data frame to 200 partitions for better performance
   .select("match_id",
           F.posexplode(F.from_json("match_innings", array_schema))) # Explode the match_innings array into rows
@@ -349,10 +403,9 @@ dlv = dlv.alias("dlv")
 # Define a window specification to partition by match_id and order by team_id
 window_spec = Window.partitionBy("match_id").orderBy("team_id")
 
-# Read fact team players and filter by match_id range
+# Read fact team players
 tpl = (
-  read_delta_table(clean_table_path, "t_fact_team_players")
-  .filter((F.col("match_id") > max_match_id) | (F.col("match_id") <  min_match_id))
+  read_delta_table(*team_players_table_path)
   .select("match_id", "team_id")
   .distinct()
   .withColumn("next_team_id", F.coalesce(F.lead("team_id", 1).over(window_spec), F.lag("team_id", 1).over(window_spec))) # Create a new column with the next team_id in the same match using the window function
@@ -392,5 +445,14 @@ dlv = (
 )
 
 # Create or replace the delta table with the deliveries data
-create_or_replace_delta_table(dlv, *deliveries_table_path, write_mode)
+execute_and_log(
+    function=create_or_replace_delta_table,
+    df=dlv,
+    lakehouse_name=deliveries_table_path[0],
+    table_name=deliveries_table_path[1],
+    log_lakehouse=raw_lakehouse,
+    job_name=deliveries_table_path[1],
+    job_category = job_category,
+    parent_job_name=job_name
+    )
 
