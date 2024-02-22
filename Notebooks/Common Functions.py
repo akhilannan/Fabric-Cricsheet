@@ -942,3 +942,56 @@ def execute_and_log(function: callable, log_lakehouse: str, job_name: str, job_c
         raise e
     return result
 
+
+# # Get Tables in a Lakehouse
+
+# In[ ]:
+
+
+def get_tables_in_lakehouse(lakehouse_name):
+    """Returns a list of tables in the given lakehouse.
+
+    Args:
+        lakehouse_name (str): The name of the lakehouse.
+
+    Returns:
+        list: A list of table names, or an empty list if the lakehouse does not exist or is empty.
+    """
+    try:
+        table_list = [file.name for file in mssparkutils.fs.ls(get_lakehouse_path(lakehouse_name))]
+    except Exception as e:
+        print(e)
+        table_list = []
+    return table_list
+
+
+# # Optimize and Vacuum Table
+
+# In[ ]:
+
+
+def optimize_and_vacuum_table(lakehouse_name: str, table_name: str | list | None = None, retention_hours: int = None) -> None:
+    """Optimizes and vacuums one or more Delta tables in the lakehouse.
+
+    Args:
+        lakehouse_name (str): The name of the lakehouse.
+        table_name (str | list | None, optional): The name or names of the tables to optimize and vacuum. If None, all tables in the lakehouse will be processed. Defaults to None.
+        retention_hours (int, optional): The retention period in hours for vacuuming. Defaults to None.
+    """
+    spark.conf.set("spark.databricks.delta.retentionDurationCheck.enabled", False)
+    path = get_lakehouse_path(lakehouse_name)
+    if table_name is None:
+        # Get a list of all tables in the lakehouse
+        table_names = get_tables_in_lakehouse(lakehouse_name)
+    elif isinstance(table_name, str):
+        # Convert a single table name to a list
+        table_names = [table_name]
+    else:
+        # Assume table_name is already a list of table names
+        table_names = table_name
+    # Loop through each table name and optimize and vacuum it
+    for table_name in table_names:
+        delta_table = DeltaTable.forPath(spark, os.path.join(path, table_name))
+        delta_table.optimize()
+        delta_table.vacuum(retention_hours)
+
