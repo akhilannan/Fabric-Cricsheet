@@ -300,32 +300,71 @@ def create_or_replace_delta_table(df: DataFrame, lakehouse_name: str, table_name
     )
 
 
-# # Function for updating Delta table
+# # Function for upserting Delta table
 
 # In[ ]:
 
 
-def update_delta_table(lakehouse_name: str, table_name: str, df: DataFrame, merge_condition: str, update_condition: dict) -> None:
-    """Updates a delta table with the given data frame and conditions.
+def upsert_delta_table(lakehouse_name: str, table_name: str, df: DataFrame, merge_condition: str, update_condition: dict = None) -> None:
+    """Updates or inserts rows into a delta table with the given data frame and conditions.
 
     Args:
         lakehouse_name (str): The name of the lakehouse.
         table_name (str): The name of the delta table.
         df (pyspark.sql.DataFrame): The data frame to merge with the delta table.
         merge_condition (str): The condition to match the rows for merging.
-        update_condition (dict): The dictionary of column names and values to update when matched.
+        update_condition (dict, optional): The dictionary of column names and values to update when matched. Defaults to None.
 
     Returns:
         None
     """
     table_path = get_lakehouse_path(lakehouse_name)
     delta_table = DeltaTable.forPath(spark, os.path.join(table_path, table_name))
-    (
-        delta_table.alias('t')
-        .merge(df.alias('s'), merge_condition)
-        .whenMatchedUpdate(set = update_condition)
-        .execute()
-    )
+    if update_condition is None:
+        # If update_condition is None, just insert new rows when not matched
+        (
+            delta_table.alias('t')
+            .merge(df.alias('s'), merge_condition)
+            .whenNotMatchedInsertAll()
+            .execute()
+        )
+    else:
+        # Otherwise, update existing rows when matched and insert new rows when not matched
+        (
+            delta_table.alias('t')
+            .merge(df.alias('s'), merge_condition)
+            .whenMatchedUpdate(set = update_condition)
+            .execute()
+        )
+
+
+# # Function to Create or Insert new data to Delta Table
+
+# In[ ]:
+
+
+def create_or_insert_table(df: DataFrame, lakehouse_name: str, table_name: str, primary_key: str, merge_key: str) -> None:
+    """Create or insert a delta table from a dataframe.
+
+    Args:
+        df (DataFrame): The dataframe to be inserted or used to create the table.
+        lakehouse_name (str): The name of the lakehouse where the table is located.
+        table_name (str): The name of the table to be created or inserted.
+        primary_key (str): The name of the column that serves as the primary key of the table.
+        merge_key (str): The name of the column that serves as the merge key of the table.
+    """
+    if delta_table_exists(lakehouse_name, table_name):
+        # Get the maximum value of the primary key from the existing table
+        max_primary_key = read_delta_table(lakehouse_name, table_name).agg(F.max(primary_key)).collect()[0][0] + 1
+        # Increment the primary key of the dataframe by the maximum value
+        df = df.withColumn(primary_key, F.col(primary_key) + F.lit(max_primary_key))
+        # Format the merge condition with the merge key
+        merge_condition = f"t.{merge_key} = s.{merge_key}"
+        # Upsert the dataframe into the existing table
+        upsert_delta_table(lakehouse_name, table_name, df, merge_condition)
+    else:
+        # Create a new table from the dataframe
+        create_or_replace_delta_table(df, lakehouse_name, table_name)
 
 
 # # Function to get row count of a table
@@ -422,7 +461,7 @@ def unzip_files(zip_filename: str, filenames: list[str], path: str) -> None:
         handle.extractall(path=path, members=filenames)
 
 
-# # Function to parallel unzip a large number of files
+# # Function to unzip a large number of files in parallel
 
 # In[ ]:
 
@@ -875,18 +914,14 @@ def insert_or_update_job_table(
         create_or_replace_delta_table(job_df, lakehouse_name, table_name, "append")
     else:
         job_df = job_df.withColumn("end_time", F.lit(datetime.datetime.today()))
-        end_time = (
-            f"t.start_time + INTERVAL {duration} SECONDS" if duration else "s.end_time"
-        )
+        end_time = f"t.start_time + INTERVAL {duration} SECONDS" if duration else "s.end_time"
         merge_condition = "s.job_id = t.job_id"
         update_condition = {
             "end_time": end_time,
             "status": "s.status",
             "message": "s.message",
         }
-        update_delta_table(
-            lakehouse_name, table_name, job_df, merge_condition, update_condition
-        )
+        upsert_delta_table(lakehouse_name, table_name, job_df, merge_condition, update_condition)
 
 
 # # Function to Execute DAG

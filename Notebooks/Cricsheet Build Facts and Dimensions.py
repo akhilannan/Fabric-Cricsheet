@@ -120,11 +120,14 @@ pdf = (
 )
 
 # Write the DataFrame to a Delta table
+# Create a new table if it does not exist, or append the new payers to the existing table
 execute_and_log(
-    function=create_or_replace_delta_table,
+    function=create_or_insert_table,
     df=pdf,
     lakehouse_name=player_table_path[0],
     table_name=player_table_path[1],
+    primary_key = "player_id",
+    merge_key = "player_name",
     log_lakehouse=raw_lakehouse,
     job_name=player_table_path[1],
     job_category = job_category,
@@ -145,11 +148,14 @@ tdf = (
 )
 
 # Write the DataFrame to a Delta table
+# Create a new table if it does not exist, or append the new teams to the existing table
 execute_and_log(
-    function=create_or_replace_delta_table,
+    function=create_or_insert_table,
     df=tdf,
     lakehouse_name=team_table_path[0],
     table_name=team_table_path[1],
+    primary_key = "team_id",
+    merge_key = "team",
     log_lakehouse=raw_lakehouse,
     job_name=team_table_path[1],
     job_category = job_category,
