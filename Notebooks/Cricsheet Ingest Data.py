@@ -19,7 +19,7 @@ get_ipython().run_line_magic('run', '"/Common Functions"')
 
 
 raw_lakehouse = "lh_bronze"
-job_name = None
+master_job_name = None
 
 
 # # Initialize Variables
@@ -58,7 +58,7 @@ execute_and_log(
     log_lakehouse=raw_lakehouse,
     job_name='Compare Row Count Bronze',
     job_category = job_category,
-    parent_job_name=job_name
+    parent_job_name=master_job_name
     )
 
 
@@ -75,7 +75,7 @@ execute_and_log(
     log_lakehouse=raw_lakehouse,
     job_name='Download Cricsheet Data',
     job_category = job_category,
-    parent_job_name=job_name
+    parent_job_name=master_job_name
     )
 
 
@@ -93,7 +93,7 @@ execute_and_log(
     log_lakehouse=raw_lakehouse,
     job_name='Unzip Files',
     job_category = job_category,
-    parent_job_name=job_name
+    parent_job_name=master_job_name
     )
 
 
@@ -148,6 +148,6 @@ execute_and_log(
     log_lakehouse=raw_lakehouse,
     job_name=table_name,
     job_category = job_category,
-    parent_job_name=job_name
+    parent_job_name=master_job_name
     )
 

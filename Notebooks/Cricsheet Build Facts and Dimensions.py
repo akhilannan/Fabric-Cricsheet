@@ -20,7 +20,7 @@ get_ipython().run_line_magic('run', '"/Common Functions"')
 
 raw_lakehouse = "lh_bronze"
 clean_lakehouse = "lh_gold"
-job_name = None
+master_job_name = None
 
 
 # # Set Variables
@@ -81,7 +81,7 @@ execute_and_log(
     table2_name=cric_table_name,
     job_name='Compare Row Count Gold',
     job_category = job_category,
-    parent_job_name=job_name
+    parent_job_name=master_job_name
     )
 
 
@@ -131,7 +131,7 @@ execute_and_log(
     log_lakehouse=raw_lakehouse,
     job_name=player_table_path[1],
     job_category = job_category,
-    parent_job_name=job_name
+    parent_job_name=master_job_name
     )
 
 
@@ -159,7 +159,7 @@ execute_and_log(
     log_lakehouse=raw_lakehouse,
     job_name=team_table_path[1],
     job_category = job_category,
-    parent_job_name=job_name
+    parent_job_name=master_job_name
     )
 
 
@@ -281,7 +281,7 @@ execute_and_log(
     log_lakehouse=raw_lakehouse,
     job_name=match_table_path[1],
     job_category = job_category,
-    parent_job_name=job_name
+    parent_job_name=master_job_name
     )
 
 
@@ -318,7 +318,7 @@ execute_and_log(
     log_lakehouse=raw_lakehouse,
     job_name=date_table_path[1],
     job_category = job_category,
-    parent_job_name=job_name
+    parent_job_name=master_job_name
     )
 
 
@@ -353,7 +353,7 @@ execute_and_log(
     log_lakehouse=raw_lakehouse,
     job_name=team_players_table_path[1],
     job_category = job_category,
-    parent_job_name=job_name
+    parent_job_name=master_job_name
     )
 
 
@@ -459,6 +459,6 @@ execute_and_log(
     log_lakehouse=raw_lakehouse,
     job_name=deliveries_table_path[1],
     job_category = job_category,
-    parent_job_name=job_name
+    parent_job_name=master_job_name
     )
 
