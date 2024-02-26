@@ -11,7 +11,7 @@
 
 
 raw_lakehouse = "lh_bronze"
-items_to_optimize_vacuum_str = "{'lh_bronze': None, 'lh_gold': None}" # None means all tables in the lakehouse
+items_to_optimize_vacuum_str = "{'lh_gold': None, 'lh_bronze': None}" # None means all tables in the lakehouse
 optimize_and_vacuum = True
 retention_hours = 0 # None means default 7 days
 master_job_name = None
@@ -39,21 +39,11 @@ get_ipython().run_line_magic('run', '"/Common Functions"')
 # In[ ]:
 
 
-for lakehouse, tables in ast.literal_eval(items_to_optimize_vacuum_str).items():
-    # Ensure tables is a list
-    tables = tables if isinstance(tables, list) else [tables]
-
-    # Optimize and log each table
-    for table in tables:
-        job_name =  f"{lakehouse}.{table}" if table else f"All tables in {lakehouse}"
-        execute_and_log(
-            function=optimize_and_vacuum_table,
-            lakehouse_name=lakehouse,
-            table_name=table,
-            retention_hours = retention_hours,
-            log_lakehouse = raw_lakehouse,
-            job_name=job_name,
-            job_category="Optimize and Vacuum",
-            parent_job_name=master_job_name
-        )
+optimize_and_vacuum_items(
+    items_to_optimize_vacuum=items_to_optimize_vacuum_str,
+    retention_hours=retention_hours,
+    log_lakehouse=raw_lakehouse,
+    job_category='Optimize and Vacuum',
+    parent_job_name=master_job_name,
+    )
 

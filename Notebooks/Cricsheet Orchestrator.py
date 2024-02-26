@@ -22,8 +22,8 @@ raw_lakehouse = "lh_bronze"
 clean_lakehouse = "lh_gold"
 semantic_model_list = "Cricsheet Model" # Can pass multiple coma seperated "model1,model2"
 master_job_name = "Cricsheet Master"
-optimize_and_vacuum = False # Change to True to enable optimize and vaccum
-items_to_optimize_vacuum = {raw_lakehouse: None, clean_lakehouse: None}
+optimize_and_vacuum = True # Change to True to enable optimize and vaccum
+items_to_optimize_vacuum = {clean_lakehouse: None, raw_lakehouse: None}
 retention_hours = None
 
 
@@ -72,7 +72,7 @@ DAG = {
 
 execute_and_log(function=execute_dag,
                 log_lakehouse=raw_lakehouse, 
-                job_name=job_name,
+                job_name=master_job_name,
                 job_category= "Orchestrator",
                 dag=DAG)
 

@@ -948,7 +948,7 @@ def execute_dag(dag):
 # In[ ]:
 
 
-def execute_and_log(function: callable, log_lakehouse: str, job_name: str, job_category: str, parent_job_name: str = None, request_id: str = None, **kwargs) -> any:
+def execute_and_log(function: callable, log_lakehouse: str = None, job_name: str = None, job_category: str = None, parent_job_name: str = None, request_id: str = None, **kwargs) -> any:
     """Executes a given function and logs the result to a lakehouse table.
 
     Args:
@@ -967,14 +967,23 @@ def execute_and_log(function: callable, log_lakehouse: str, job_name: str, job_c
         Exception: If the function execution fails.
     """
     result = None
-    insert_or_update_job_table(lakehouse_name=log_lakehouse, job_name=job_name, job_category = job_category, parent_job_name=parent_job_name, request_id = request_id)
+    # check if log_lakehouse is None
+    if log_lakehouse is not None:
+        # call the insert_or_update_job_table function
+        insert_or_update_job_table(lakehouse_name=log_lakehouse, job_name=job_name, job_category = job_category, parent_job_name=parent_job_name, request_id = request_id)
     try:
         result = function(**kwargs) # assign the result of the function call to a variable
-        insert_or_update_job_table(lakehouse_name=log_lakehouse, job_name=job_name, status="Completed")
+        # check if log_lakehouse is None
+        if log_lakehouse is not None:
+            # call the insert_or_update_job_table function
+            insert_or_update_job_table(lakehouse_name=log_lakehouse, job_name=job_name, status="Completed")
     except Exception as e:
         msg = str(e)
         status = 'Completed' if msg == "No new data" else "Failed"
-        insert_or_update_job_table(lakehouse_name=log_lakehouse, job_name=job_name, status=status, message=msg)
+        # check if log_lakehouse is None
+        if log_lakehouse is not None:
+            # call the insert_or_update_job_table function
+            insert_or_update_job_table(lakehouse_name=log_lakehouse, job_name=job_name, status=status, message=msg)
         raise e
     return result
 
@@ -1006,28 +1015,59 @@ def get_tables_in_lakehouse(lakehouse_name):
 # In[ ]:
 
 
-def optimize_and_vacuum_table(lakehouse_name: str, table_name: str | list | None = None, retention_hours: int = None) -> None:
-    """Optimizes and vacuums one or more Delta tables in the lakehouse.
+def optimize_and_vacuum_table(lakehouse_name: str, table_name: str, retention_hours: int = None) -> None:
+    """Optimizes and vacuums a single Delta table in the lakehouse.
 
     Args:
         lakehouse_name (str): The name of the lakehouse.
-        table_name (str | list | None, optional): The name or names of the tables to optimize and vacuum. If None, all tables in the lakehouse will be processed. Defaults to None.
-        retention_hours (int, optional): The retention period in hours for vacuuming. Defaults to None.
+        table_name (str): The name of the table to optimize and vacuum.
+        retention_hours (int, optional): The retention period in hours for vacuuming. Defaults to None, which will be 7
     """
     spark.conf.set("spark.databricks.delta.retentionDurationCheck.enabled", False)
     path = get_lakehouse_path(lakehouse_name)
-    if table_name is None:
-        # Get a list of all tables in the lakehouse
-        table_names = get_tables_in_lakehouse(lakehouse_name)
-    elif isinstance(table_name, str):
-        # Convert a single table name to a list
-        table_names = [table_name]
-    else:
-        # Assume table_name is already a list of table names
-        table_names = table_name
-    # Loop through each table name and optimize and vacuum it
-    for table_name in table_names:
-        delta_table = DeltaTable.forPath(spark, os.path.join(path, table_name))
-        delta_table.optimize()
-        delta_table.vacuum(retention_hours)
+    # Optimize and vacuum the table
+    delta_table = DeltaTable.forPath(spark, os.path.join(path, table_name))
+    delta_table.optimize().executeCompaction()
+    delta_table.vacuum(retention_hours)
+
+
+# # Optimize and Vacuum multiple items
+
+# In[ ]:
+
+
+def optimize_and_vacuum_items(items_to_optimize_vacuum: str | dict, retention_hours: int = None, log_lakehouse: str = None, job_category: str = None, parent_job_name: str = None) -> None:
+    """Optimizes and vacuums multiple Delta tables in different lakehouses.
+
+    Args:
+        items_to_optimize_vacuum (str | dict): A string or a dictionary of lakehouse_name as key and table_list as value.
+        retention_hours (int, optional): The retention period in hours for vacuuming. Defaults to None.
+    """
+    # If items_to_optimize_vacuum is a string, try to convert it to a dictionary using ast.literal_eval
+    if isinstance(items_to_optimize_vacuum, str):
+        try:
+            items_to_optimize_vacuum = ast.literal_eval(items_to_optimize_vacuum)
+        except ValueError:
+            # If the string cannot be parsed as a dictionary, assume it is a lakehouse name and set table_list to None
+            items_to_optimize_vacuum = {items_to_optimize_vacuum: None}
+    # Loop through each lakehouse and table list
+    for lakehouse_name, table_list in items_to_optimize_vacuum.items():
+        # If table_list is None, get the list of tables in the lakehouse
+        if table_list is None:
+            table_list = get_tables_in_lakehouse(lakehouse_name)
+        # If table_list is a string, convert it to a list
+        elif isinstance(table_list, str):
+            table_list = [table_list]
+        # Loop through each table name in the table list
+        for table_name in table_list:
+            # Call the optimize_and_vacuum_table function with the lakehouse name, table name, and retention hours and optional logging
+            execute_and_log(
+                function=optimize_and_vacuum_table,
+                lakehouse_name=lakehouse_name,
+                table_name=table_name,
+                retention_hours = retention_hours,
+                log_lakehouse = log_lakehouse,
+                job_name=f"{lakehouse_name}.{table_name}",
+                job_category=job_category,
+                parent_job_name=master_job_name)
 
