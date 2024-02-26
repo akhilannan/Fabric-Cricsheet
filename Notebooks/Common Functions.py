@@ -33,6 +33,7 @@ import pathlib
 from zipfile import ZipFile
 import os
 import datetime
+import dateutil
 import pytz
 import time
 import uuid
@@ -1015,20 +1016,69 @@ def get_tables_in_lakehouse(lakehouse_name):
 # In[ ]:
 
 
-def optimize_and_vacuum_table(lakehouse_name: str, table_name: str, retention_hours: int = None) -> None:
-    """Optimizes and vacuums a single Delta table in the lakehouse.
+def optimize_and_vacuum_table(lakehouse_name: str, table_name: str, workspace_id: str = fabric.get_workspace_id()) -> str:
+    """Optimize and vacuum a table in a lakehouse.
 
     Args:
         lakehouse_name (str): The name of the lakehouse.
-        table_name (str): The name of the table to optimize and vacuum.
-        retention_hours (int, optional): The retention period in hours for vacuuming. Defaults to None, which will be 7
+        table_name (str): The name of the table.
+        workspace_id (str, optional): The ID of the workspace. Defaults to fabric.get_workspace_id().
+
+    Returns:
+        Optional[str]: The operation ID of the job instance, or None if an error occurs.
     """
-    spark.conf.set("spark.databricks.delta.retentionDurationCheck.enabled", False)
-    path = get_lakehouse_path(lakehouse_name)
-    # Optimize and vacuum the table
-    delta_table = DeltaTable.forPath(spark, os.path.join(path, table_name))
-    delta_table.optimize().executeCompaction()
-    delta_table.vacuum(retention_hours)
+    client = fabric.FabricRestClient()
+    lakehouse_id = get_lakehouse_id(lakehouse_name)
+    payload = {
+        "executionData": {
+            "tableName": table_name,
+            "optimizeSettings": {
+                "vOrder": True
+            },
+            "vacuumSettings": {
+                "retentionPeriod": "7.01:00:00"
+            }
+        }
+    }
+    try:
+        response = client.post(f"/v1/workspaces/{workspace_id}/items/{lakehouse_id}/jobs/instances?jobType=TableMaintenance", json= payload)
+        if response.status_code != 202:
+            raise FabricHTTPException(response)
+        operation_id = response.headers['Location'].split('/')[-1]
+        return operation_id
+    except FabricHTTPException as e:
+        print(e)
+        return None
+
+
+# # Get Lakehouse Job Status
+
+# In[ ]:
+
+
+def get_lakehouse_job_status(operation_id: str, lakehouse_name: str, workspace_id: str = fabric.get_workspace_id()) -> dict:
+    """Returns the status of a lakehouse job given its operation ID and lakehouse name.
+
+    Args:
+        operation_id (str): The ID of the lakehouse job operation.
+        lakehouse_name (str): The name of the lakehouse.
+        workspace_id (str, optional): The ID of the workspace. Defaults to None.
+
+    Returns:
+        dict: A dictionary containing the operation status.
+
+    Raises:
+        FabricHTTPException: If the response status code is not 200.
+    """
+    client = fabric.FabricRestClient()
+    lakehouse_id = get_lakehouse_id(lakehouse_name)
+    try:
+        response = client.get(f"/v1/workspaces/{workspace_id}/items/{lakehouse_id}/jobs/instances/{operation_id}")
+        if response.status_code != 200:
+                raise FabricHTTPException(response)
+        return response.json()
+    except FabricHTTPException as e:
+            print(e)
 
 
 # # Optimize and Vacuum multiple items
@@ -1036,38 +1086,78 @@ def optimize_and_vacuum_table(lakehouse_name: str, table_name: str, retention_ho
 # In[ ]:
 
 
-def optimize_and_vacuum_items(items_to_optimize_vacuum: str | dict, retention_hours: int = None, log_lakehouse: str = None, job_category: str = None, parent_job_name: str = None) -> None:
-    """Optimizes and vacuums multiple Delta tables in different lakehouses.
+def optimize_and_vacuum_items(items_to_optimize_vacuum: str | dict, log_lakehouse: str = None, job_category: str = None, parent_job_name: str = None, parallelism: int = 3) -> None:
+    """Optimize and vacuum tables in lakehouses.
 
     Args:
-        items_to_optimize_vacuum (str | dict): A string or a dictionary of lakehouse_name as key and table_list as value.
-        retention_hours (int, optional): The retention period in hours for vacuuming. Defaults to None.
+        items_to_optimize_vacuum: A dictionary of lakehouse names and table lists, or a string that can be evaluated to a dictionary, or a single lakehouse name.
+        log_lakehouse: The name of the lakehouse where the job details will be logged, if any.
+        job_category: The category of the job, if any.
+        parent_job_name: The name of the parent job, if any.
+        parallelism: The number of tables to optimize and vacuum concurrently, default is 3.
     """
-    # If items_to_optimize_vacuum is a string, try to convert it to a dictionary using ast.literal_eval
+    # Convert the input to a dictionary of lakehouse names and table lists
     if isinstance(items_to_optimize_vacuum, str):
         try:
             items_to_optimize_vacuum = ast.literal_eval(items_to_optimize_vacuum)
         except ValueError:
             # If the string cannot be parsed as a dictionary, assume it is a lakehouse name and set table_list to None
             items_to_optimize_vacuum = {items_to_optimize_vacuum: None}
-    # Loop through each lakehouse and table list
+    
+    # Create a queue to store the pending tables
+    queue = []
     for lakehouse_name, table_list in items_to_optimize_vacuum.items():
-        # If table_list is None, get the list of tables in the lakehouse
-        if table_list is None:
-            table_list = get_tables_in_lakehouse(lakehouse_name)
-        # If table_list is a string, convert it to a list
-        elif isinstance(table_list, str):
-            table_list = [table_list]
-        # Loop through each table name in the table list
+        table_list = table_list or get_tables_in_lakehouse(lakehouse_name)
+        table_list = [table_list] if isinstance(table_list, str) else table_list
         for table_name in table_list:
-            # Call the optimize_and_vacuum_table function with the lakehouse name, table name, and retention hours and optional logging
-            execute_and_log(
-                function=optimize_and_vacuum_table,
-                lakehouse_name=lakehouse_name,
-                table_name=table_name,
-                retention_hours = retention_hours,
-                log_lakehouse = log_lakehouse,
-                job_name=f"{lakehouse_name}.{table_name}",
-                job_category=job_category,
-                parent_job_name=master_job_name)
+            queue.append((lakehouse_name, table_name))
+    
+    # Optimize and vacuum each table in each lakehouse and store the operation ids
+    job_details = {}
+    # Create a list to store the running tables
+    running = []
+    operation_status_dict = {}
+    # Loop until the queue is empty and the running list is empty
+    while queue or running:
+        # If the running list is not full and the queue is not empty, pop a table from the queue and start the operation
+        while len(running) < parallelism and queue:
+            lakehouse_name, table_name = queue.pop(0)
+            operation_id = optimize_and_vacuum_table(lakehouse_name, table_name)
+            if log_lakehouse:
+                insert_or_update_job_table(
+                    lakehouse_name=log_lakehouse,
+                    job_name=f"{lakehouse_name}.{table_name}",
+                    parent_job_name=parent_job_name,
+                    request_id=operation_id,
+                    job_category=job_category,
+                )
+            job_details[lakehouse_name, table_name] = operation_id
+            running.append((lakehouse_name, table_name, operation_id))
+        # Check the status of the running tables and remove the ones that are finished
+        for (lakehouse_name, table_name, operation_id) in running.copy():
+            operation_details = get_lakehouse_job_status(operation_id, lakehouse_name)
+            operation_status = operation_details['status']
+            if operation_status not in ["NotStarted", "InProgress"]:
+                running.remove((lakehouse_name, table_name, operation_id))
+                operation_status_dict[lakehouse_name, table_name] = operation_status
+                if log_lakehouse:
+                    start_time = dateutil.parser.isoparse(operation_details['startTimeUtc'])
+                    end_time = dateutil.parser.isoparse(operation_details['endTimeUtc'])
+                    duration = (end_time - start_time).total_seconds()
+                    msg = operation_details['failureReason']
+                    insert_or_update_job_table(
+                        lakehouse_name=log_lakehouse,
+                        job_name=f"{lakehouse_name}.{table_name}",
+                        parent_job_name=parent_job_name,
+                        request_id=operation_id,
+                        status=operation_status,
+                        duration=duration,
+                        job_category=job_category,
+                        message=msg
+                    )
+    
+    # Raise an exception if any table failed to optimize
+    failed_tables = [f"{lakehouse_name}.{table_name}" for (lakehouse_name, table_name), status in operation_status_dict.items() if status == 'Failed']
+    if failed_tables:
+        raise Exception(f"The following tables failed to optimize: {', '.join(failed_tables)}")
 

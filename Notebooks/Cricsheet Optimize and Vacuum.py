@@ -11,10 +11,10 @@
 
 
 raw_lakehouse = "lh_bronze"
-items_to_optimize_vacuum_str = "{'lh_gold': None, 'lh_bronze': None}" # None means all tables in the lakehouse
+items_to_optimize_vacuum = {'lh_gold': None} # None means all tables in the lakehouse
 optimize_and_vacuum = True
-retention_hours = 0 # None means default 7 days
 master_job_name = None
+optimize_parallelism = 3
 
 
 # # Check if optimize_and_vacuum flag is set, if not Exit notebook
@@ -40,8 +40,8 @@ get_ipython().run_line_magic('run', '"/Common Functions"')
 
 
 optimize_and_vacuum_items(
-    items_to_optimize_vacuum=items_to_optimize_vacuum_str,
-    retention_hours=retention_hours,
+    items_to_optimize_vacuum=items_to_optimize_vacuum,
+    parallelism = optimize_parallelism,
     log_lakehouse=raw_lakehouse,
     job_category='Optimize and Vacuum',
     parent_job_name=master_job_name,
