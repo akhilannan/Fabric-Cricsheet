@@ -10,16 +10,14 @@ Fabric-Cricsheet is a project that aims to build an end-to-end Lakehouse solutio
 
 ## Setup
 
-To setup Fabric-Cricsheet, follow these steps:
+To set up Fabric-Cricsheet, follow these steps:
 
-1. Clone this repository
-2. Navigate to the project directory
-3. Upload the Notebooks to Microsoft Fabric Workspace
-4. Run the Cricsheet Orchestrator notebook from Microsoft Fabric
-5. Get the Connection string and SQL analytics endpoint id of clean_lakehouse
-6. Open the Semantic Model in Tabular Editor and upate the connection (DatabaseQuery in Shared Expression)
-7. Deploy the Cricsheet Model to Fabric Workspace via XMLA endpoint
-8. Open the Power BI report and point to the Cricsheet Model in Power BI Service
+1. Download the "Deploy Cricsheet" notebook from the Deploy folder.
+2. Upload the "Deploy Cricsheet" notebook to your Microsoft Fabric Workspace, ensuring a Fabric Capacity is assigned.
+3. Open the notebook. If necessary, modify the Raw/Clean Lakehouse names, then execute the notebook. This process will create several new Fabric items in your workspace.
+4. Locate and execute the "Cricsheet Orchestrator" notebook within your workspace.
+5. Locate the "Cricsheet Analysis" Power BI report from your Workspace to verify data retrieval.
+
 
 ## License
 
