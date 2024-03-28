@@ -1,7 +1,7 @@
 {
   "name": "Cricsheet Model",
   "id": "d03f7040-9b86-4870-a554-087d48a94ebd",
-  "compatibilityLevel": 1604,
+  "compatibilityLevel": 1605,
   "model": {
     "culture": "en-US",
     "collation": "Latin1_General_100_BIN2_UTF8",
@@ -376,7 +376,7 @@
               },
               {
                 "name": "BestPracticeAnalyzer_IgnoreRules",
-                "value": "{\"RuleIDs\":[\"RELATIONSHIP_COLUMNS_SHOULD_BE_OF_INTEGER_DATA_TYPE\"]}"
+                "value": "{\"RuleIDs\":[\"RELATIONSHIP_COLUMNS_SHOULD_BE_OF_INTEGER_DATA_TYPE\",\"DATECOLUMN_FORMATSTRING\"]}"
               }
             ]
           },
@@ -432,6 +432,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Bowling",
             "lineageTag": "5ed66846-7561-4877-9da6-5b7dae5b7f76",
             "changedProperties": [
               {
@@ -459,6 +460,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Batting",
             "lineageTag": "30d7046e-95c9-4d65-a324-c9c14a05302c",
             "changedProperties": [
               {
@@ -483,6 +485,7 @@
               "    COUNTROWS ( _TotalInnings )"
             ],
             "formatString": "#,0",
+            "displayFolder": "Batting",
             "lineageTag": "e7a4d100-ed07-4a6d-8f3f-5bf395bdede9",
             "changedProperties": [
               {
@@ -509,6 +512,7 @@
             ],
             "formatString": "#,0",
             "isHidden": true,
+            "displayFolder": "Batting",
             "lineageTag": "d62df7a9-087f-40b1-89dd-8375a2b6d2ed",
             "changedProperties": [
               {
@@ -533,6 +537,7 @@
               "SUM ( Deliveries[batter_runs] )"
             ],
             "formatString": "#,0",
+            "displayFolder": "Batting",
             "lineageTag": "45bed107-7953-4309-8cb7-b9694e6b6c18",
             "changedProperties": [
               {
@@ -553,6 +558,7 @@
               ")"
             ],
             "formatString": "0.00",
+            "displayFolder": "Batting",
             "lineageTag": "5f25cdbb-01f8-49d5-96b8-24b5d87e7eee",
             "changedProperties": [
               {
@@ -592,6 +598,7 @@
               "RETURN",
               "    IF ( NOT ISBLANK ( _MinRuns ), COALESCE ( _MaxWickets, 0 ) & \"/\" & _MinRuns )"
             ],
+            "displayFolder": "Bowling",
             "lineageTag": "a74e8b7e-eb3b-4d23-9276-99d1a4696e06",
             "annotations": [
               {
@@ -611,6 +618,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Bowling",
             "lineageTag": "e6caf2e6-3b93-4cd4-b5c6-39c781e52f69",
             "changedProperties": [
               {
@@ -629,6 +637,7 @@
               ")"
             ],
             "formatString": "0",
+            "displayFolder": "Bowling",
             "lineageTag": "9ea1c91d-1091-48dc-8ccb-b561694dfe88",
             "annotations": [
               {
@@ -644,6 +653,7 @@
               "DIVIDE ( [Conceded Runs], [Wickets #] )"
             ],
             "formatString": "0.00",
+            "displayFolder": "Bowling",
             "lineageTag": "26acd61d-6f01-4eef-98dc-78cd8977f2e8",
             "changedProperties": [
               {
@@ -664,6 +674,7 @@
               "SUM ( Deliveries[byes] )"
             ],
             "formatString": "#,0",
+            "displayFolder": "Misc",
             "lineageTag": "9e5bc3ec-0cc9-48b1-a40e-0fe8cbd083f1",
             "changedProperties": [
               {
@@ -689,6 +700,7 @@
               "    )"
             ],
             "formatString": "#,0",
+            "displayFolder": "Bowling",
             "lineageTag": "774bcf00-1d61-4440-a89e-21dc4049916f",
             "changedProperties": [
               {
@@ -707,6 +719,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Bowling",
             "lineageTag": "1b87e35c-1547-4a16-8353-02ec694ea274",
             "changedProperties": [
               {
@@ -725,6 +738,7 @@
             ],
             "formatString": "0",
             "isHidden": true,
+            "displayFolder": "Misc",
             "lineageTag": "2f22a81e-0112-45f2-8825-0e2b1af90b31",
             "annotations": [
               {
@@ -740,6 +754,7 @@
               "COUNTROWS ( Deliveries )"
             ],
             "formatString": "#,0",
+            "displayFolder": "Misc",
             "lineageTag": "69a80e53-88d7-4b50-9330-8176eabf5518",
             "changedProperties": [
               {
@@ -776,6 +791,7 @@
               "    CONCATENATEX ( _DidNotBat, 'Player'[Player Name], \", \" )"
             ],
             "isHidden": true,
+            "displayFolder": "Batting",
             "lineageTag": "4451f855-4f48-4a16-8c97-448579dab0f3",
             "changedProperties": [
               {
@@ -800,6 +816,7 @@
               ")"
             ],
             "formatString": "0.00",
+            "displayFolder": "Bowling",
             "lineageTag": "a555f753-06c0-45fa-9546-3fd0e2b36ca4",
             "changedProperties": [
               {
@@ -820,6 +837,7 @@
               "[Overall Runs] - [Batter's Runs]"
             ],
             "formatString": "#,0",
+            "displayFolder": "Misc",
             "lineageTag": "ba92e94a-1124-47c4-b64e-6aecb0d94e7d",
             "changedProperties": [
               {
@@ -881,6 +899,7 @@
               "    )"
             ],
             "isHidden": true,
+            "displayFolder": "Misc",
             "lineageTag": "fab808c3-3312-443f-9aa8-c574f7fb677d",
             "changedProperties": [
               {
@@ -913,6 +932,7 @@
               "        & SELECTEDVALUE ( 'Deliveries'[innings] ) & \")\""
             ],
             "isHidden": true,
+            "displayFolder": "Misc",
             "lineageTag": "dba08fed-7979-48d2-8140-46db27b14151",
             "changedProperties": [
               {
@@ -938,6 +958,7 @@
             ],
             "formatString": "0",
             "isHidden": true,
+            "displayFolder": "Bowling",
             "lineageTag": "00d4cf48-2709-423a-983e-27ea0f8ff523",
             "changedProperties": [
               {
@@ -963,6 +984,7 @@
             ],
             "formatString": "0",
             "isHidden": true,
+            "displayFolder": "Misc",
             "lineageTag": "297ed745-0a72-4aa8-a3bf-54bb649a8308",
             "changedProperties": [
               {
@@ -983,6 +1005,7 @@
               "CALCULATE ( [Deliveries #], Deliveries[batter_runs] = 4 )"
             ],
             "formatString": "#,0",
+            "displayFolder": "Batting",
             "lineageTag": "ac8a80f1-4cbc-43a5-80e4-5048ac18e669",
             "changedProperties": [
               {
@@ -1000,6 +1023,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Batting",
             "lineageTag": "625d236c-eb61-43dc-bec7-07be12b0bf84",
             "changedProperties": [
               {
@@ -1014,6 +1038,7 @@
               "MAX ( 'Team Players'[match_date] )"
             ],
             "formatString": "dd-MMM-yyyy",
+            "displayFolder": "Misc",
             "lineageTag": "7fc2ed13-c223-44c5-a263-8bb7d7c62366",
             "changedProperties": [
               {
@@ -1038,6 +1063,7 @@
               "SUM ( Deliveries[leg_byes] )"
             ],
             "formatString": "#,0",
+            "displayFolder": "Misc",
             "lineageTag": "d5f4b081-cb82-4332-ae40-aa5c29c0bb1d",
             "changedProperties": [
               {
@@ -1070,6 +1096,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Bowling",
             "lineageTag": "27a07d42-b520-4438-98b7-531afb21f89b",
             "changedProperties": [
               {
@@ -1084,6 +1111,7 @@
               "DISTINCTCOUNT ( 'Team Players'[match_id] )"
             ],
             "formatString": "#,0",
+            "displayFolder": "Misc",
             "lineageTag": "6cd22ded-cb6e-4570-a701-27048ab4acf4",
             "changedProperties": [
               {
@@ -1101,6 +1129,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Misc",
             "lineageTag": "0815f23f-5ad7-4acf-a783-45c5858a8d0f",
             "changedProperties": [
               {
@@ -1128,6 +1157,7 @@
             ],
             "formatString": "0",
             "isHidden": true,
+            "displayFolder": "Misc",
             "lineageTag": "b79848e4-1eee-43fe-8731-0b814fab21fd",
             "changedProperties": [
               {
@@ -1148,6 +1178,7 @@
               "CALCULATE ( [Deliveries #], Deliveries[no_balls] <> 0 )"
             ],
             "formatString": "#,0",
+            "displayFolder": "Misc",
             "lineageTag": "52b21d7d-673a-4171-a397-08ffe70228fe",
             "changedProperties": [
               {
@@ -1166,6 +1197,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Bowling",
             "lineageTag": "b789f9a9-5533-4550-bd63-95676e51a551",
             "changedProperties": [
               {
@@ -1187,6 +1219,7 @@
               "    _MatchBatted - _MatchOuts"
             ],
             "formatString": "#,0",
+            "displayFolder": "Batting",
             "lineageTag": "9266542b-375d-4963-ad3d-47eff6a24d20"
           },
           {
@@ -1202,6 +1235,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Bowling",
             "lineageTag": "606b8104-ab7a-407a-87aa-2974c2ada0c0",
             "changedProperties": [
               {
@@ -1223,6 +1257,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Misc",
             "lineageTag": "445e2591-8a91-4f4a-9b8d-d16297054b65"
           },
           {
@@ -1232,6 +1267,7 @@
               "SUM ( Deliveries[total_runs] )"
             ],
             "formatString": "#,0",
+            "displayFolder": "Misc",
             "lineageTag": "509c063a-36c7-4fcd-bd2a-be3774aa4d5f",
             "changedProperties": [
               {
@@ -1249,6 +1285,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Misc",
             "lineageTag": "4b9afb6c-c585-43d9-89fd-9aade0866d01",
             "changedProperties": [
               {
@@ -1266,6 +1303,7 @@
               ")"
             ],
             "formatString": "#.00",
+            "displayFolder": "Misc",
             "lineageTag": "5c49639f-31da-4b31-a39d-16ee9c8b12a3",
             "changedProperties": [
               {
@@ -1303,6 +1341,7 @@
               ")"
             ],
             "isHidden": true,
+            "displayFolder": "Misc",
             "lineageTag": "5c4cf95d-dabc-4401-82f5-9cf88c91e0d2",
             "annotations": [
               {
@@ -1318,6 +1357,7 @@
               "COUNTROWS ( SUMMARIZE ( 'Team Players', 'Match'[Season] ) )"
             ],
             "formatString": "#,0",
+            "displayFolder": "Misc",
             "lineageTag": "0fc6172d-1ecf-4366-8b64-2ef581fb84e9",
             "changedProperties": [
               {
@@ -1349,6 +1389,7 @@
             ],
             "formatString": "#,0",
             "isHidden": true,
+            "displayFolder": "Misc",
             "lineageTag": "47b74d9b-58c2-485d-976f-69ccf7ec9947",
             "annotations": [
               {
@@ -1364,6 +1405,7 @@
               "CALCULATE ( [Deliveries #], Deliveries[batter_runs] = 6 )"
             ],
             "formatString": "#,0",
+            "displayFolder": "Batting",
             "lineageTag": "6ef78f1b-d99b-4a15-bb98-c7a5c361a1bb",
             "changedProperties": [
               {
@@ -1378,6 +1420,7 @@
               "DIVIDE ( [Batter's Runs] * 100, [Deliveries #] - [Wides #] )"
             ],
             "formatString": "0.00",
+            "displayFolder": "Batting",
             "lineageTag": "5d610a0a-5239-44c1-86d4-f2f1a21f90ec",
             "changedProperties": [
               {
@@ -1402,6 +1445,7 @@
             ],
             "formatString": "0",
             "isHidden": true,
+            "displayFolder": "Misc",
             "lineageTag": "a2bccab0-7597-46b3-a6df-7c5060563c58",
             "changedProperties": [
               {
@@ -1431,6 +1475,7 @@
             ],
             "formatString": "0",
             "isHidden": true,
+            "displayFolder": "Misc",
             "lineageTag": "6d1bc84a-2cfe-4996-aa1a-91440241837c",
             "changedProperties": [
               {
@@ -1453,6 +1498,7 @@
               "    IF ( NOT ISBLANK ( _outPlayer ), _outPlayer & \" - \" & [Wicket Status] )"
             ],
             "isHidden": true,
+            "displayFolder": "Misc",
             "lineageTag": "36002050-3064-4f3e-9268-de28cdda7a73",
             "changedProperties": [
               {
@@ -1517,6 +1563,7 @@
               "    )"
             ],
             "isHidden": true,
+            "displayFolder": "Misc",
             "lineageTag": "92ec9886-2d80-4d8a-a77c-31542dff386c",
             "annotations": [
               {
@@ -1535,6 +1582,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Bowling",
             "lineageTag": "942a249b-3783-4635-87dd-c74abf334602"
           },
           {
@@ -1544,6 +1592,7 @@
               "CALCULATE ( [Deliveries #], Deliveries[wides] <> 0 )"
             ],
             "formatString": "#,0",
+            "displayFolder": "Misc",
             "lineageTag": "7edde242-0d7e-458e-865d-dbee5183c7b7",
             "changedProperties": [
               {
@@ -1562,6 +1611,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Bowling",
             "lineageTag": "dafcdbb3-f2ac-4e24-a41c-919c88fa1055",
             "changedProperties": [
               {
@@ -1576,6 +1626,7 @@
               "DIVIDE ( [Match Wins #], [Match #] )"
             ],
             "formatString": "0%;-0%;0%",
+            "displayFolder": "Misc",
             "lineageTag": "d24d1922-487a-4bab-b91a-c96864a7b553",
             "changedProperties": [
               {
@@ -1600,6 +1651,7 @@
               "RETURN",
               "    IF ( NOT ISBLANK ( _MaxYear ), _MinYear & \"-\" & _MaxYear )"
             ],
+            "displayFolder": "Misc",
             "lineageTag": "b7e9aaa0-2549-450f-84b9-ecfb81d23f5a",
             "annotations": [
               {
@@ -1625,6 +1677,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Batting",
             "lineageTag": "8eece48e-e217-4bc3-840e-e0cbc25afa37",
             "changedProperties": [
               {
@@ -1641,6 +1694,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Misc",
             "lineageTag": "a1323a71-9d0a-4ff4-a8b1-c2a5178b4d4c"
           },
           {
@@ -1653,6 +1707,7 @@
               ")"
             ],
             "isHidden": true,
+            "displayFolder": "Batting",
             "lineageTag": "e6821455-0842-45d6-8cbb-fa0376274e14",
             "changedProperties": [
               {
@@ -1677,6 +1732,7 @@
               ")"
             ],
             "isHidden": true,
+            "displayFolder": "Bowling",
             "lineageTag": "a4655852-6fc8-40f6-a951-f082dcfe0497",
             "annotations": [
               {
@@ -1692,6 +1748,7 @@
               "MAXX ( 'Deliveries', RELATED ( 'Player'[Player Name] ) )"
             ],
             "isHidden": true,
+            "displayFolder": "Batting",
             "lineageTag": "c6d7adb0-0ce6-40d0-a405-2c644aad5930",
             "annotations": [
               {
@@ -1710,6 +1767,7 @@
               ")"
             ],
             "isHidden": true,
+            "displayFolder": "Batting",
             "lineageTag": "272411e4-5d4f-4e2b-a4b4-3bce03bb7fb5",
             "annotations": [
               {
@@ -1729,6 +1787,7 @@
             ],
             "formatString": "0",
             "isHidden": true,
+            "displayFolder": "Misc",
             "lineageTag": "ec4a8bc5-33c3-4d21-a3b1-4db977b0dedf",
             "annotations": [
               {
@@ -1751,6 +1810,7 @@
             ],
             "formatString": "0",
             "isHidden": true,
+            "displayFolder": "Misc",
             "lineageTag": "e50df5b7-c0ad-49ed-8a71-0ce1b1c2f4e5",
             "annotations": [
               {
@@ -1777,6 +1837,7 @@
               ")"
             ],
             "isHidden": true,
+            "displayFolder": "Misc",
             "lineageTag": "b044a995-d15b-4e71-a1a2-a0e5016af2a5",
             "changedProperties": [
               {
@@ -1801,6 +1862,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Bowling",
             "lineageTag": "e73f72a4-4160-451b-bc41-77c52ba10b08",
             "changedProperties": [
               {
@@ -1819,6 +1881,7 @@
               ")"
             ],
             "formatString": "#,0",
+            "displayFolder": "Batting",
             "lineageTag": "64290324-5b50-476c-a7e7-edfdb7026044",
             "changedProperties": [
               {
@@ -1839,6 +1902,7 @@
             ],
             "formatString": "#,0",
             "isHidden": true,
+            "displayFolder": "Misc",
             "lineageTag": "bea9b4e9-7299-447d-8a91-b68f602cd65d"
           }
         ],
@@ -2292,7 +2356,7 @@
               },
               {
                 "name": "BestPracticeAnalyzer_IgnoreRules",
-                "value": "{\"RuleIDs\":[\"RELATIONSHIP_COLUMNS_SHOULD_BE_OF_INTEGER_DATA_TYPE\"]}"
+                "value": "{\"RuleIDs\":[\"RELATIONSHIP_COLUMNS_SHOULD_BE_OF_INTEGER_DATA_TYPE\",\"DATECOLUMN_FORMATSTRING\"]}"
               }
             ]
           }
@@ -2826,7 +2890,7 @@
               },
               {
                 "name": "BestPracticeAnalyzer_IgnoreRules",
-                "value": "{\"RuleIDs\":[\"RELATIONSHIP_COLUMNS_SHOULD_BE_OF_INTEGER_DATA_TYPE\"]}"
+                "value": "{\"RuleIDs\":[\"RELATIONSHIP_COLUMNS_SHOULD_BE_OF_INTEGER_DATA_TYPE\",\"DATECOLUMN_FORMATSTRING\"]}"
               }
             ]
           },
@@ -3106,6 +3170,10 @@
       {
         "name": "BestPracticeAnalyzer_IgnoreRules",
         "value": "{\"RuleIDs\":[\"ISAVAILABLEINMDX_FALSE_NONATTRIBUTE_COLUMNS\",\"OBJECTS_WITH_NO_DESCRIPTION\"]}"
+      },
+      {
+        "name": "BestPracticeAnalyzer_ExternalRuleFiles",
+        "value": "[\"https://raw.githubusercontent.com/microsoft/Analysis-Services/master/BestPracticeRules/BPARules.json\"]"
       }
     ]
   }
