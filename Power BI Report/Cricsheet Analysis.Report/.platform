@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Report",
+    "displayName": "Cricsheet Analysis"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "60b93acc-c574-4648-8a30-34a8ce61c662"
+  }
+}

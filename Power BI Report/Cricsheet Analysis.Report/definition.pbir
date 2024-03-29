@@ -1,12 +1,12 @@
 {
-  "version": "1.0",
+  "version": "4.0",
   "datasetReference": {
     "byPath": null,
     "byConnection": {
-      "connectionString": "Data Source=powerbi://api.powerbi.com/v1.0/myorg/Fabric Explore;Initial Catalog=\"Cricsheet Model\";Access Mode=readonly;Integrated Security=ClaimsToken",
+      "connectionString": "Data Source=powerbi://api.powerbi.com/v1.0/myorg/Cricsheet;Initial Catalog=\"Cricsheet Model\";Access Mode=readonly;Integrated Security=ClaimsToken",
       "pbiServiceModelId": null,
       "pbiModelVirtualServerName": "sobe_wowvirtualserver",
-      "pbiModelDatabaseName": "d03f7040-9b86-4870-a554-087d48a94ebd",
+      "pbiModelDatabaseName": "ad317124-4c8c-4b63-8368-45f0c0fb86ca",
       "name": "EntityDataSource",
       "connectionType": "pbiServiceXmlaStyleLive"
     }
