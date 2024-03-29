@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Report",
+    "displayName": "Data Load Monitor"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "ed347800-4e0e-4bb8-ab8d-7f2149c8090b"
+  }
+}
