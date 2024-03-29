@@ -1443,7 +1443,7 @@ def create_or_replace_report_from_reportjson(report_name, dataset_name, report_j
 # # Create or Replace Notebook
 
 
-def create_or_replace_notebook_from_ipynb(notebook_name, notebook_json, default_lakehouse_name=None, workspace_id=fabric.get_workspace_id(), replacements=None):
+def create_or_replace_notebook_from_ipynb(notebook_name, notebook_json, default_lakehouse_name=None, replacements=None, workspace_id=fabric.get_workspace_id()):
     """
     Create or replace a notebook in the Fabric workspace.
 
@@ -1453,8 +1453,8 @@ def create_or_replace_notebook_from_ipynb(notebook_name, notebook_json, default_
     - notebook_name (str): The display name of the notebook.
     - notebook_json (str): The JSON content of the notebook to be encoded to Base64.
     - default_lakehouse_name (str): An optional parameter to set the default lakehouse name.
-    - workspace_id (str): An optional parameter to set the workspace in which the lakehouse resides. This defaults to the workspace in which the notebook resides.
     - replacements (dict): An optional dictionary where each key-value pair represents a string to find and a string to replace it with in the code cells of the notebook.
+    - workspace_id (str): An optional parameter to set the workspace in which the lakehouse resides. This defaults to the workspace in which the notebook resides.
 
     Returns:
     None
