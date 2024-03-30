@@ -874,7 +874,7 @@ def insert_or_update_job_table(
                 parent_job_id,
                 job_name,
                 job_category,
-                datetime.datetime.today(),
+                datetime.datetime.today().replace(microsecond=0),
                 None,
                 status,
                 message,

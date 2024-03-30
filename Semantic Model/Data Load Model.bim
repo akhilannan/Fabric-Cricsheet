@@ -158,9 +158,9 @@
             "name": "Duration, sec",
             "expression": [
               "",
-              "ROUND (",
-              "    SUMX ( Job, 1 * ( COALESCE ( Job[End Time], NOW () ) - Job[Start Time] ) ) * 24 * 60 * 60,",
-              "    0",
+              "SUMX (",
+              "    Job,",
+              "    DATEDIFF ( Job[Start Time], COALESCE ( Job[End Time], NOW () ), SECOND )",
               ")"
             ],
             "formatString": "#,0",
@@ -277,7 +277,7 @@
         "kind": "m",
         "expression": [
           "let",
-          "    database = Sql.Database(\"CEAEJAPELL3URLHQQ3YNLVVB4I-DLJQJSPJEYJUBFYZXGYZKPCOQ4.datawarehouse.fabric.microsoft.com\", \"8c7a75b8-70a3-43be-9fd5-02cb18b6f6ba\")",
+          "    database = Sql.Database(\"ceaejapell3urlhqq3ynlvvb4i-fkm7nxn4gcfuvkilcrluccbe7a.datawarehouse.fabric.microsoft.com\", \"63f51846-bd9d-4d82-96b6-4ff3da6b8ff7\")",
           "in",
           "    database"
         ],
