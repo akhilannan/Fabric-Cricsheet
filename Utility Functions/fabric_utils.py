@@ -1306,8 +1306,9 @@ def check_operation_status(operation_id, client=fabric.FabricRestClient()):
     operation_response = client.get(f"/v1/operations/{operation_id}").json()
     while operation_response['status'] != 'Succeeded':
         if operation_response['status'] == 'Failed':
-            error_code = operation_response['error']['error_code']
-            error_message = operation_response['error']['message']
+            error = operation_response['error']
+            error_code = error['errorCode']
+            error_message = error['message']
             raise Exception(f"Operation failed with error code {error_code}: {error_message}")
         time.sleep(3)
         operation_response = client.get(f"/v1/operations/{operation_id}").json()
