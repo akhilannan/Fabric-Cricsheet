@@ -887,7 +887,7 @@ def insert_or_update_job_table(
     if status == "InProgress":
         create_or_replace_delta_table(job_df, lakehouse_name, table_name, "append")
     else:
-        job_df = job_df.withColumn("end_time", F.lit(datetime.datetime.today()))
+        job_df = job_df.withColumn("end_time", F.lit(datetime.datetime.today().replace(microsecond=0)))
         end_time = f"t.start_time + INTERVAL {duration} SECONDS" if duration else "s.end_time"
         merge_condition = "s.job_id = t.job_id"
         update_condition = {
