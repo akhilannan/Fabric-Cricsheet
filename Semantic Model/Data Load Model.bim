@@ -181,6 +181,7 @@
           {
             "name": "Time Elapsed",
             "expression": [
+              "",
               "VAR _TotalSeconds = [Duration, sec]",
               "VAR _Days =",
               "    INT ( _TotalSeconds / 86400 )",
