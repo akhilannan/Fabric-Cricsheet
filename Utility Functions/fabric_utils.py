@@ -66,7 +66,7 @@ def get_fabric_items(item_name=None, item_type=None, workspace_id=fabric.get_wor
 # # Get Lakehouse ID
 
 
-def get_lakehouse_id(lakehouse_name: str) -> int:
+def get_lakehouse_id(lakehouse_name: str, workspace_id: str = fabric.get_workspace_id()) -> int:
     """Returns the Id of a Lakehouse item given its display name.
 
     Args:
@@ -80,7 +80,7 @@ def get_lakehouse_id(lakehouse_name: str) -> int:
     """
 
     # Filter the list by matching the display name with the given argument
-    query_result = get_fabric_items(item_name= lakehouse_name, item_type = 'Lakehouse')
+    query_result = get_fabric_items(item_name= lakehouse_name, item_type = 'Lakehouse', workspace_id = workspace_id)
 
     # Check if the query result is empty
     if query_result.empty:
@@ -1386,7 +1386,7 @@ def create_or_replace_report_from_reportjson(report_name, dataset_name, report_j
     object_type = 'Report'
 
     # Retrieve the semantic model associated with the dataset name
-    dataset_df = get_fabric_items(item_name=dataset_name, item_type='SemanticModel')
+    dataset_df = get_fabric_items(item_name=dataset_name, item_type='SemanticModel', workspace_id = workspace_id)
     if dataset_df.empty:
         print(f"ERROR: The '{dataset_name}' semantic model does not exist.")
         return
@@ -1481,7 +1481,7 @@ def create_or_replace_notebook_from_ipynb(notebook_name, notebook_json, default_
 
     # Apply default lakehouse if provided
     if default_lakehouse_name:
-        default_lakehouse_id = get_lakehouse_id(default_lakehouse_name)
+        default_lakehouse_id = get_lakehouse_id(default_lakehouse_name, workspace_id)
         new_lakehouse_data = {
             "lakehouse": {
                 "default_lakehouse": default_lakehouse_id,
