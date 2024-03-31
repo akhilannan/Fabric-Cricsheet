@@ -1361,7 +1361,7 @@ def create_or_replace_semantic_model_from_bim(dataset_name, bim_file_json, works
     }
 
     # Call the function to create or replace the fabric item
-    create_or_replace_fabric_item(workspace_id, dataset_name, object_type, request_body)
+    create_or_replace_fabric_item(dataset_name, object_type, request_body, workspace_id)
 
 
 # # Create or replace report from report json
@@ -1442,7 +1442,7 @@ def create_or_replace_report_from_reportjson(report_name, dataset_name, report_j
     }
 
     # Call the function to create or replace the fabric item
-    create_or_replace_fabric_item(workspace_id, report_name, object_type, request_body)
+    create_or_replace_fabric_item(report_name, object_type, request_body, workspace_id)
 
 
 # # Create or Replace Notebook
@@ -1508,13 +1508,13 @@ def create_or_replace_notebook_from_ipynb(notebook_name, notebook_json, default_
     }
 
     # Call the function to create or replace the notebook item in the Power BI workspace.
-    create_or_replace_fabric_item(workspace_id, notebook_name, object_type, request_body)
+    create_or_replace_fabric_item(notebook_name, object_type, request_body, workspace_id)
 
 
 # # Create or Replace Fabric Item
 
 
-def create_or_replace_fabric_item(workspace_id, item_name, object_type, request_body):
+def create_or_replace_fabric_item(item_name, object_type, request_body, workspace_id=fabric.get_workspace_id()):
     """
     Create or replace a fabric item within a given workspace.
 
@@ -1535,7 +1535,7 @@ def create_or_replace_fabric_item(workspace_id, item_name, object_type, request_
     client = fabric.FabricRestClient()
 
     # Retrieve existing items of the same name and type
-    df = get_fabric_items(item_name=item_name, item_type=object_type)
+    df = get_fabric_items(item_name=item_name, item_type=object_type, workspace_id = workspace_id)
 
     # If no existing item, create a new one
     if df.empty:
