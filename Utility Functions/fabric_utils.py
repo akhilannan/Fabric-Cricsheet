@@ -94,7 +94,7 @@ def get_lakehouse_id(lakehouse_name: str, workspace_id: str = fabric.get_workspa
 # # Create Lakehouse
 
 
-def create_lakehouse_if_not_exists(lh_name: str) -> str:
+def create_lakehouse_if_not_exists(lh_name: str, workspace_id: str = fabric.get_workspace_id()) -> str:
     # Use a docstring to explain the function's purpose and parameters
     """Creates a lakehouse with the given name if it does not exist already.
 
@@ -106,10 +106,10 @@ def create_lakehouse_if_not_exists(lh_name: str) -> str:
     """
     try:
         # Use the fabric API to create a lakehouse and return its ID
-        return fabric.create_lakehouse(lh_name)
+        return fabric.create_lakehouse(display_name = lh_name, workspace = workspace_id)
     except FabricHTTPException as exc:
         # If the lakehouse already exists, return its ID
-        return get_lakehouse_id(lh_name)
+        return get_lakehouse_id(lh_name, workspace_id)
 
 
 # # Create Mount Point
@@ -992,7 +992,7 @@ def optimize_and_vacuum_table_api(lakehouse_name: str, table_name: str, workspac
         Optional[str]: The operation ID of the job instance, or None if an error occurs.
     """
     client = fabric.FabricRestClient()
-    lakehouse_id = get_lakehouse_id(lakehouse_name)
+    lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id)
     payload = {
         "executionData": {
             "tableName": table_name,
@@ -1062,7 +1062,7 @@ def get_lakehouse_job_status(operation_id: str, lakehouse_name: str, workspace_i
         FabricHTTPException: If the response status code is not 200.
     """
     client = fabric.FabricRestClient()
-    lakehouse_id = get_lakehouse_id(lakehouse_name)
+    lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id)
     try:
         response = client.get(f"/v1/workspaces/{workspace_id}/items/{lakehouse_id}/jobs/instances/{operation_id}")
         if response.status_code in (200, 403):
@@ -1221,7 +1221,7 @@ def get_server_db(lakehouse_name: str, workspace_id: str = fabric.get_workspace_
     """
 
     client = fabric.FabricRestClient()
-    lakehouse_id = get_lakehouse_id(lakehouse_name)
+    lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id)
     response = client.get(f"/v1/workspaces/{workspace_id}/lakehouses/{lakehouse_id}")
     
     if response.status_code == 200:
