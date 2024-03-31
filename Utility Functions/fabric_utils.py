@@ -1268,7 +1268,7 @@ def update_model_expression(dataset_name: str, lakehouse_name: str, workspace_id
     """
     tom_server = fabric.create_tom_server(readonly = False, workspace = workspace_id)
     tom_database = tom_server.Databases.GetByName(dataset_name)
-    shared_expression = get_shared_expression(lakehouse_name)
+    shared_expression = get_shared_expression(lakehouse_name, workspace_id)
 
     try:
         model = tom_database.Model
