@@ -14,7 +14,11 @@ To set up Fabric-Cricsheet, follow these steps:
 
 1. Download the "Deploy Cricsheet" notebook from the Deploy folder of the repo.
 2. Upload the "Deploy Cricsheet" notebook to your Microsoft Fabric Workspace, ensuring a Fabric Capacity (or Trial) is assigned.
-3. Open the notebook. If necessary, modify the Raw/Clean Lakehouse names, then execute the notebook. This process will create several new Fabric items in your workspace.
-4. Locate and execute the "Cricsheet Orchestrator" notebook within your workspace.
-5. To view the live data load statistics, open the 'lh_bronze' Sql Analytics endpoint, execute the 'job_details.sql' script located in the 'Sql' folder of the repo.
-6. Once Data Load is complete, open the "Cricsheet Analysis" Power BI report from your Workspace to verify data retrieval.
+3. Open the notebook. If necessary, modify details such as Raw/Clean Lakehouse names, workspace name, etc., and then execute the notebook. 
+4. The execution will create several new Fabric items in the Cricsheet workspace. It will also start the data load process.
+5. To view the live data load statistics, open the "Data Load Monitor" report in Cricsheet workspace. Alternatively, you can access the 'lh_bronze' SQL Analytics endpoint and execute the 'job_details.sql' script located in the 'Sql' folder of the repository.
+6. Once Data Load is complete, open the "Cricsheet Analysis" Power BI report from Cricsheet Workspace to verify data retrieval.
+
+## Technical Archtecture
+
+TODO
