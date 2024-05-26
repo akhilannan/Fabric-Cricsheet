@@ -1605,7 +1605,7 @@ def get_publish_state(environment_name, workspace_id=fabric.get_workspace_id()):
 
 
 # # Create and publish Spark Environment
-def create_and_publish_spark_environment(environment_name, yml_path, py_path):
+def create_and_publish_spark_environment(environment_name, yml_path, py_path, workspace_id=fabric.get_workspace_id()):
     """
     Creates or replaces a Spark environment using the specified YAML and Python files.
     
@@ -1613,6 +1613,7 @@ def create_and_publish_spark_environment(environment_name, yml_path, py_path):
         yml_path (str): Path to the Spark YAML configuration file.
         py_path (str): Path to the fabric_utils.py file.
         environment_name (str): Name of the Spark environment.
+        workspace_id (str, optional): ID of the workspace. Defaults to fabric.get_workspace_id().
     """
     item_type = "Environment"
     request_body = {
@@ -1620,10 +1621,10 @@ def create_and_publish_spark_environment(environment_name, yml_path, py_path):
         'type': item_type
     }
     
-    create_or_replace_fabric_item(environment_name, item_type, request_body)
-    print(upload_file_to_environment(environment_name, py_path))
-    print(update_sparkcompute(environment_name, yml_path))
-    print(publish_staging_environment(environment_name))
+    create_or_replace_fabric_item(environment_name, item_type, request_body, workspace_id)
+    print(upload_file_to_environment(environment_name, py_path, workspace_id))
+    print(update_sparkcompute(environment_name, yml_path, workspace_id))
+    print(publish_staging_environment(environment_name, workspace_id))
 
 
 # # Execute a function with retries
