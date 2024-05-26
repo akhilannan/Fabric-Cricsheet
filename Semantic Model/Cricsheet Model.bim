@@ -7,6 +7,7 @@
     "collation": "Latin1_General_100_BIN2_UTF8",
     "defaultPowerBIDataSourceVersion": "powerBI_V3",
     "discourageImplicitMeasures": true,
+    "directLakeBehavior": "directLakeOnly",
     "tables": [
       {
         "name": "Player",
