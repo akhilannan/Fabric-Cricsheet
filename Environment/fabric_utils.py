@@ -1,6 +1,4 @@
 # # Import Libraries
-
-
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 from pyspark.sql import DataFrame
@@ -29,14 +27,10 @@ import math
 
 
 # # Initialize Spark Session
-
-
 spark = SparkSession.builder.getOrCreate()
 
 
 # # Get Fabric Items
-
-
 def get_fabric_items(item_name=None, item_type=None, workspace_id=fabric.get_workspace_id()):
     """
     Retrieve fabric items based on optional filters for name and type within a workspace.
@@ -63,9 +57,17 @@ def get_fabric_items(item_name=None, item_type=None, workspace_id=fabric.get_wor
     return items.query(query) if conditions else items
 
 
+# # Get Fabric Item ID
+def get_item_id(item_name, item_type, workspace_id=fabric.get_workspace_id()):
+    df = get_fabric_items(item_name=item_name, item_type=item_type, workspace_id=workspace_id)
+    if df.empty:
+        print(f"{item_name} doesn't exist in the workspace as {item_type}")
+        return None
+    else:
+        return df.Id.values[0]
+
+
 # # Get Lakehouse ID
-
-
 def get_lakehouse_id(lakehouse_name: str, workspace_id: str = fabric.get_workspace_id()) -> int:
     """Returns the Id of a Lakehouse item given its display name.
 
@@ -92,8 +94,6 @@ def get_lakehouse_id(lakehouse_name: str, workspace_id: str = fabric.get_workspa
 
 
 # # Create Lakehouse
-
-
 def create_lakehouse_if_not_exists(lh_name: str, workspace_id: str = fabric.get_workspace_id()) -> str:
     # Use a docstring to explain the function's purpose and parameters
     """Creates a lakehouse with the given name if it does not exist already.
@@ -113,8 +113,6 @@ def create_lakehouse_if_not_exists(lh_name: str, workspace_id: str = fabric.get_
 
 
 # # Create Mount Point
-
-
 def create_mount_point(abfss_path: str, mount_point: str = "/lakehouse/default") -> str:
     """Creates a mount point for an Azure Blob Storage path and returns the local path.
 
@@ -142,8 +140,6 @@ def create_mount_point(abfss_path: str, mount_point: str = "/lakehouse/default")
 
 
 # # Get Lakehouse path
-
-
 def get_lakehouse_path(lakehouse_name: str, path_type: str = "spark", folder_type: str = "Tables") -> str:
     """Returns the path to a lakehouse folder based on the lakehouse name, path type, and folder type.
 
@@ -183,8 +179,6 @@ def get_lakehouse_path(lakehouse_name: str, path_type: str = "spark", folder_typ
 
 
 # # Delete a Lakehouse item
-
-
 def delete_path(lakehouse, item, folder_type= "Tables"):
     """Deletes the folder or file if it exists.
 
@@ -200,8 +194,6 @@ def delete_path(lakehouse, item, folder_type= "Tables"):
 
 
 # # Download Data from URL
-
-
 def download_data(url, lakehouse, path):
     """
     Downloads a zip file from the base URL and extracts it to the lake path.
@@ -233,8 +225,6 @@ def download_data(url, lakehouse, path):
 
 
 # # Check if Delta Table Exists
-
-
 def delta_table_exists(lakehouse_name: str, tbl: str) -> bool:
   """Check if a delta table exists at the given path.
 
@@ -257,8 +247,6 @@ def delta_table_exists(lakehouse_name: str, tbl: str) -> bool:
 
 
 # # Read a Delta Table in Lakehouse
-
-
 def read_delta_table(lakehouse_name: str, table_name: str) -> DataFrame:
     """Reads a delta table from a given path and table name.
 
@@ -279,8 +267,6 @@ def read_delta_table(lakehouse_name: str, table_name: str) -> DataFrame:
 
 
 # # Create or Replace Delta Table
-
-
 def create_or_replace_delta_table(df: DataFrame, lakehouse_name: str, table_name: str, mode_type: str = "overwrite") -> None:
     """Create or replace a delta table from a dataframe.
 
@@ -305,8 +291,6 @@ def create_or_replace_delta_table(df: DataFrame, lakehouse_name: str, table_name
 
 
 # # Upsert Delta table
-
-
 def upsert_delta_table(lakehouse_name: str, table_name: str, df: DataFrame, merge_condition: str, update_condition: dict = None) -> None:
     """Updates or inserts rows into a delta table with the given data frame and conditions.
 
@@ -341,8 +325,6 @@ def upsert_delta_table(lakehouse_name: str, table_name: str, df: DataFrame, merg
 
 
 # # Create or Upsert data to Delta table
-
-
 def create_or_insert_table(df: DataFrame, lakehouse_name: str, table_name: str, primary_key: str, merge_key: str) -> None:
     """Create or insert a delta table from a dataframe.
 
@@ -368,8 +350,6 @@ def create_or_insert_table(df: DataFrame, lakehouse_name: str, table_name: str, 
 
 
 # # Get row count of a table
-
-
 def get_row_count(lakehouse_or_link: str, table_name: str = None) -> int:
     """Get the row count from a delta table or a web page.
 
@@ -404,8 +384,6 @@ def get_row_count(lakehouse_or_link: str, table_name: str = None) -> int:
 
 
 # # Compare row count
-
-
 def compare_row_count(table1_lakehouse: str, table1_name: str, table2_lakehouse: str, table2_name: str = None) -> None:
     """Compare the row count of two tables and exit or print the difference.
 
@@ -439,8 +417,6 @@ def compare_row_count(table1_lakehouse: str, table1_name: str, table2_lakehouse:
 
 
 # # Unzip files from an archive
-
-
 def unzip_files(zip_filename: str, filenames: list[str], path: str) -> None:
     """Unzip a batch of files from a zip file to a given path.
 
@@ -456,8 +432,6 @@ def unzip_files(zip_filename: str, filenames: list[str], path: str) -> None:
 
 
 # # Unzip a large number of files in parallel
-
-
 def unzip_parallel(lakehouse: str, path: str, filename: str, file_type: str = None) -> None:
     """Unzip all files from a zip file to a given path in parallel.
 
@@ -499,8 +473,6 @@ def unzip_parallel(lakehouse: str, path: str, filename: str, file_type: str = No
 
 
 # # Get first team to Bat or Field
-
-
 def first_team(toss_decision, team_player_schema):
   """
   Returns the name of the first team to play based on the toss decision.
@@ -523,8 +495,6 @@ def first_team(toss_decision, team_player_schema):
 
 
 # # Convert a string of refresh items to json
-
-
 def convert_to_json(refresh_objects: str) -> list:
     """Converts a string of refresh objects to a list of dictionaries.
 
@@ -554,8 +524,6 @@ def convert_to_json(refresh_objects: str) -> list:
 
 
 # # Call Enhanced Refresh API
-
-
 def start_enhanced_refresh(
     dataset_name: str,
     workspace_name: str = fabric.get_workspace_id(),
@@ -601,8 +569,6 @@ def start_enhanced_refresh(
 
 
 # # Get Enhanced Refresh Details
-
-
 def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, workspace_name: str = fabric.resolve_workspace_name(fabric.get_workspace_id())) -> pd.DataFrame:
     """Get enhanced refresh details for a given dataset and refresh request ID.
 
@@ -647,8 +613,6 @@ def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, wor
 
 
 # # Cancel Enhanced Refresh
-
-
 def cancel_enhanced_refresh(request_id: str, dataset_id: str, workspace_id: str = fabric.get_workspace_id()) -> dict:
     """Cancel an enhanced refresh request for a Power BI dataset.
 
@@ -682,8 +646,6 @@ def cancel_enhanced_refresh(request_id: str, dataset_id: str, workspace_id: str 
 
 
 # # Check if a Semantic Model exists in the workspace
-
-
 def is_dataset_exists(dataset: str, workspace: str = fabric.get_workspace_id()) -> bool:
     """Check if a dataset exists in a given workspace.
 
@@ -698,8 +660,6 @@ def is_dataset_exists(dataset: str, workspace: str = fabric.get_workspace_id()) 
 
 
 # # Synchronous Enhanced refresh of datasets
-
-
 def refresh_and_wait(
     dataset_list: list[str],
     workspace: str = fabric.get_workspace_id(),
@@ -800,8 +760,6 @@ def refresh_and_wait(
 
 
 # # Get Job ID
-
-
 def get_job_id(lakehouse = None, table = None, job_name = None) -> str:
     """Returns a job id based on the type and the delta table.
 
@@ -825,8 +783,6 @@ def get_job_id(lakehouse = None, table = None, job_name = None) -> str:
 
 
 # # Insert or Update Log table
-
-
 def insert_or_update_job_table(
     lakehouse_name: str,
     job_name: str,
@@ -899,8 +855,6 @@ def insert_or_update_job_table(
 
 
 # # Execute DAG
-
-
 def execute_dag(dag):
     """Run multiple notebooks in parallel and return the results or raise an exception."""
     results = mssparkutils.notebook.runMultiple(dag)
@@ -915,8 +869,6 @@ def execute_dag(dag):
 
 
 # # Execute and Log
-
-
 def execute_and_log(function: callable, log_lakehouse: str = None, job_name: str = None, job_category: str = None, parent_job_name: str = None, request_id: str = None, **kwargs) -> any:
     """Executes a given function and logs the result to a lakehouse table.
 
@@ -958,8 +910,6 @@ def execute_and_log(function: callable, log_lakehouse: str = None, job_name: str
 
 
 # # Get Tables in a Lakehouse
-
-
 def get_tables_in_lakehouse(lakehouse_name):
     """Returns a list of tables in the given lakehouse.
 
@@ -978,8 +928,6 @@ def get_tables_in_lakehouse(lakehouse_name):
 
 
 # # Optimize and Vacuum Table using Table Maintenance API
-
-
 def optimize_and_vacuum_table_api(lakehouse_name: str, table_name: str, workspace_id: str = fabric.get_workspace_id()) -> str:
     """Optimize and vacuum a table in a lakehouse.
 
@@ -1016,8 +964,6 @@ def optimize_and_vacuum_table_api(lakehouse_name: str, table_name: str, workspac
 
 
 # # Optimize and Vacuum Table
-
-
 def optimize_and_vacuum_table(lakehouse_name: str, table_name: str, retain_hours: int = None) -> bool:
   """
   Optimizes and vacuums a Delta table in a lakehouse.
@@ -1045,8 +991,6 @@ def optimize_and_vacuum_table(lakehouse_name: str, table_name: str, retain_hours
 
 
 # # Get Lakehouse Job Status
-
-
 def get_lakehouse_job_status(operation_id: str, lakehouse_name: str, workspace_id: str = fabric.get_workspace_id()) -> dict:
     """Returns the status of a lakehouse job given its operation ID and lakehouse name.
 
@@ -1074,8 +1018,6 @@ def get_lakehouse_job_status(operation_id: str, lakehouse_name: str, workspace_i
 
 
 # # Parse items to Optimize/Vacuum
-
-
 def prepare_optimization_items(items_to_optimize_vacuum, retain_hours=None):
     """
     Prepares a list of items for optimizing and vacuuming tables in a lakehouse.
@@ -1109,8 +1051,6 @@ def prepare_optimization_items(items_to_optimize_vacuum, retain_hours=None):
 
 
 # # Optimize and Vacuum multiple items using Table Maintenance API
-
-
 def optimize_and_vacuum_items_api(items_to_optimize_vacuum: str | dict, log_lakehouse: str = None, job_category: str = None, parent_job_name: str = None, parallelism: int = 3) -> None:
     """Optimize and vacuum tables in lakehouses.
 
@@ -1175,8 +1115,6 @@ def optimize_and_vacuum_items_api(items_to_optimize_vacuum: str | dict, log_lake
 
 
 # # Optimize and Vacuum multiple items
-
-
 def optimize_and_vacuum_items(items_to_optimize_vacuum: str | dict, retain_hours: int = None, parallelism: int = 4) -> None:
     """
     Optimizes and vacuums Delta tables in parallel across multiple lakehouses.
@@ -1206,8 +1144,6 @@ def optimize_and_vacuum_items(items_to_optimize_vacuum: str | dict, retain_hours
 
 
 # # Get SQL Analytics Server and DB Details of a Lakehouse
-
-
 def get_server_db(lakehouse_name: str, workspace_id: str = fabric.get_workspace_id()) -> tuple:
     """
     Retrieves the server and database details for a given lakehouse.
@@ -1235,8 +1171,6 @@ def get_server_db(lakehouse_name: str, workspace_id: str = fabric.get_workspace_
 
 
 # # Build a Shared Expression M code
-
-
 def get_shared_expression(lakehouse_name: str, workspace_id: str = fabric.get_workspace_id()) -> str:
     """
     This function generates the shared expression statement for a given lakehouse and its SQL endpoint.
@@ -1255,8 +1189,6 @@ def get_shared_expression(lakehouse_name: str, workspace_id: str = fabric.get_wo
 
 
 # # Repoint Semantic Model to a Lakehouse
-
-
 def update_model_expression(dataset_name: str, lakehouse_name: str, workspace_id: str = fabric.get_workspace_id()) -> None:
     """
     Update the expression in the semantic model to point to the specified lakehouse.
@@ -1280,15 +1212,11 @@ def update_model_expression(dataset_name: str, lakehouse_name: str, workspace_id
 
 
 # # Encode file content to base64
-
-
 def encode_to_base64(file):
     return base64.b64encode(json.dumps(file).encode('utf-8')).decode('utf-8')
 
 
 # # Decode Base64 encoded data to JSON format
-
-
 def decode_from_base64(encoded_data):
     # Decode the Base64 data
     decoded_bytes = base64.b64decode(encoded_data)
@@ -1300,8 +1228,6 @@ def decode_from_base64(encoded_data):
 
 
 # # Check the status of the Fabric Operation
-
-
 def check_operation_status(operation_id, client=fabric.FabricRestClient()):
     operation_response = client.get(f"/v1/operations/{operation_id}").json()
     while operation_response['status'] != 'Succeeded':
@@ -1316,8 +1242,6 @@ def check_operation_status(operation_id, client=fabric.FabricRestClient()):
 
 
 # # Create or Replace Semantic Model from bim
-
-
 def create_or_replace_semantic_model_from_bim(dataset_name, bim_file_json, workspace_id=fabric.get_workspace_id()):
     """
     This function deploys a Model.bim file to create a new semantic model in a workspace. If it already exists it will overwrite it.
@@ -1365,8 +1289,6 @@ def create_or_replace_semantic_model_from_bim(dataset_name, bim_file_json, works
 
 
 # # Create or replace report from report json
-
-
 def create_or_replace_report_from_reportjson(report_name, dataset_name, report_json, theme_json=None, workspace_id=fabric.get_workspace_id()):
     """
     Create or replace a report from a report JSON definition.
@@ -1446,8 +1368,6 @@ def create_or_replace_report_from_reportjson(report_name, dataset_name, report_j
 
 
 # # Create or Replace Notebook
-
-
 def create_or_replace_notebook_from_ipynb(notebook_name, notebook_json, default_lakehouse_name=None, replacements=None, workspace_id=fabric.get_workspace_id()):
     """
     Create or replace a notebook in the Fabric workspace.
@@ -1512,8 +1432,6 @@ def create_or_replace_notebook_from_ipynb(notebook_name, notebook_json, default_
 
 
 # # Create or Replace Fabric Item
-
-
 def create_or_replace_fabric_item(item_name, object_type, request_body, workspace_id=fabric.get_workspace_id()):
     """
     Create or replace a fabric item within a given workspace.
@@ -1541,6 +1459,9 @@ def create_or_replace_fabric_item(item_name, object_type, request_body, workspac
     if df.empty:
         response = client.post(f"/v1/workspaces/{workspace_id}/items", json=request_body)
         print(f"'{item_name}' created as a new {object_type}.")
+    elif df.Type.values[0] == "Environment":
+        print(f"'{item_name}' already exists as a {object_type} in the workspace")
+        return
     else:
         # If item exists, replace it with the new definition
         item_id = df.Id.values[0]
@@ -1553,15 +1474,159 @@ def create_or_replace_fabric_item(item_name, object_type, request_body, workspac
         print("Operation succeeded")
     elif status_code in (201, 202):
         # If status code indicates a pending operation, check its status
-        check_operation_status(response.headers['x-ms-operation-id'], client)
+        try:
+            check_operation_status(response.headers['x-ms-operation-id'], client)
+        except:
+            return response
     else:
         # If operation failed, print the status code
         print(f"Operation failed with status code: {status_code}")
 
 
+# # Upload Python file to Environment
+def upload_file_to_environment(environment_name, file_path, workspace_id=fabric.get_workspace_id()):
+    """
+    Uploads a library file to the specified environment.
+
+    Args:
+        environment_name (str): Name of the target environment.
+        file_path (str): Path to the library file on the local system.
+        workspace_id (str, optional): ID of the workspace. Defaults to fabric.get_workspace_id().
+
+    Returns:
+        str: Success message or error details.
+    """
+    try:
+        client = fabric.FabricRestClient()
+        environment_id = get_item_id(environment_name, "Environment", workspace_id)
+        if environment_id:
+            url = f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/libraries"
+            with open(file_path, 'rb') as file:
+                files = {'file': file}
+                response = client.post(url, files=files)
+                if response.status_code == 200:
+                    return "Library uploaded successfully."
+                else:
+                    return f"Error uploading library: {response.text}"
+        else:
+            return "Environment not found."
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+# # Update Spark Compute configuration
+def update_sparkcompute(environment_name, file_path, workspace_id=fabric.get_workspace_id()):
+    """
+    Updates the SparkCompute configuration for the specified environment.
+
+    Args:
+        environment_name (str): Name of the target environment.
+        file_path (str): Path to the YAML configuration file.
+        workspace_id (str, optional): ID of the workspace. Defaults to fabric.get_workspace_id().
+
+    Returns:
+        str: Success message or error details.
+    """
+    try:
+        client = fabric.FabricRestClient()
+        environment_id = get_item_id(environment_name, "Environment", workspace_id)
+        if environment_id:
+            with open(file_path, 'r') as yaml_file:
+                yaml_content = yaml.safe_load(yaml_file)
+            json_content = json.dumps(yaml_content, indent=2)
+            request_body = json.loads(json_content)
+            endpoint = f"v1/workspaces/{workspace_id}/environments/{environment_id}/staging/sparkcompute"
+            response = client.patch(endpoint, json=request_body)
+            if response.status_code == 200:
+                return "SparkCompute updated successfully."
+            else:
+                return f"Error updating SparkCompute: {response.text}"
+        else:
+            return "Environment not found."
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+# # Publish Staging Environment
+def publish_staging_environment(environment_name, workspace_id=fabric.get_workspace_id()):
+    """
+    Initiates the publishing process for the specified environment.
+
+    Args:
+        environment_name (str): Name of the target environment.
+        workspace_id (str, optional): ID of the workspace. Defaults to fabric.get_workspace_id().
+
+    Returns:
+        str: Publish status message.
+    """
+    try:
+        client = fabric.FabricRestClient()
+        environment_id = get_item_id(environment_name, "Environment", workspace_id)
+        if environment_id:
+            endpoint = f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/publish"
+            response = client.post(endpoint)
+            if response.status_code == 200:
+                print("Publish started...")
+                while get_publish_state(environment_name) == "running":
+                    time.sleep(30)
+                return f"Publish {get_publish_state(environment_name)}"
+            else:
+                return f"Error starting publish: {response.text}"
+        else:
+            return "Environment not found."
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+# # Get Publish Status
+def get_publish_state(environment_name, workspace_id=fabric.get_workspace_id()):
+    """
+    Retrieves the current publish state of the specified environment.
+
+    Args:
+        environment_name (str): Name of the target environment.
+        workspace_id (str, optional): ID of the workspace. Defaults to fabric.get_workspace_id().
+
+    Returns:
+        str: Current publish state (e.g., "running", "success", "failed", etc).
+    """
+    try:
+        client = fabric.FabricRestClient()
+        environment_id = get_item_id(environment_name, "Environment", workspace_id)
+        if environment_id:
+            endpoint = f"/v1/workspaces/{workspace_id}/environments/{environment_id}"
+            response = client.get(endpoint).json()
+            publish_details = response.get('properties', {}).get('publishDetails', {})
+            return publish_details.get('state', "Unknown")
+        else:
+            return "Environment not found."
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+# # Create and publish Spark Environment
+def create_and_publish_spark_environment(environment_name, yml_path, py_path):
+    """
+    Creates or replaces a Spark environment using the specified YAML and Python files.
+    
+    Args:
+        yml_path (str): Path to the Spark YAML configuration file.
+        py_path (str): Path to the fabric_utils.py file.
+        environment_name (str): Name of the Spark environment.
+    """
+    item_type = "Environment"
+    request_body = {
+        'displayName': environment_name,
+        'type': item_type
+    }
+    
+    create_or_replace_fabric_item(environment_name, item_type, request_body)
+    print(upload_file_to_environment(environment_name, py_path))
+    print(update_sparkcompute(environment_name, yml_path))
+    print(publish_staging_environment(environment_name))
+
+
 # # Execute a function with retries
-
-
 def execute_with_retries(func: callable, *args: any, max_retries: int = 5, delay: int = 10, **kwargs: any) -> None:
     """
     Executes a function with a specified number of retries and delay between attempts.
