@@ -739,7 +739,7 @@ def refresh_and_wait(
                         job_category=job_category,
                         message=msg,
                     )
-                print(request_status_df.to_markdown())
+                print(request_status_df)
                 request_status_dict[dataset] = request_status  # Store the status in the dictionary
                 del request_ids[dataset]
 
