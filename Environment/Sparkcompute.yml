@@ -2,10 +2,6 @@ driver_cores: 8
 driverMemory: 56g
 executorCores: 8
 executorMemory: 56g
-dynamicExecutorAllocation:
-  enabled: true
-  minExecutors: 2
-  maxExecutors: 9
 sparkProperties:
   spark.ms.autotune.enabled: true
 runtimeVersion: 1.3
