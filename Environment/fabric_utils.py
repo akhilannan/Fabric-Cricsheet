@@ -1568,9 +1568,9 @@ def publish_staging_environment(environment_name, workspace_id=fabric.get_worksp
             response = client.post(endpoint)
             if response.status_code == 200:
                 print("Publish started...")
-                while get_publish_state(environment_name) == "running":
+                while get_publish_state(environment_name, workspace_id) == "running":
                     time.sleep(30)
-                return f"Publish {get_publish_state(environment_name)}"
+                return f"Publish {get_publish_state(environment_name, workspace_id)}"
             else:
                 return f"Error starting publish: {response.text}"
         else:
