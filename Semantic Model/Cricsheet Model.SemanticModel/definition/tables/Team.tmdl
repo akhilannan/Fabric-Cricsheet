@@ -1,0 +1,36 @@
+table Team
+	lineageTag: 0d20bff5-3368-4e28-afa4-6d4cb6b85797
+	sourceLineageTag: [dbo].[t_dim_team]
+
+	column team_id
+		dataType: int64
+		isHidden
+		isKey
+		formatString: 0
+		sourceProviderType: bigint
+		lineageTag: 9f8113bd-7a5d-44cf-b6fb-8e47aa584411
+		sourceLineageTag: team_id
+		summarizeBy: none
+		sourceColumn: team_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column Team
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: 8d684fb8-ca44-4ebc-aed1-1a0adb8da14e
+		sourceLineageTag: team
+		summarizeBy: none
+		sourceColumn: team
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Team = entity
+		mode: directLake
+		source
+			entityName: t_dim_team
+			schemaName: dbo
+			expressionSource: DatabaseQuery
+
+	annotation IsTableInBiModel = True
+

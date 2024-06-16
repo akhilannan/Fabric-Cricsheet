@@ -1,0 +1,209 @@
+table 'Team Match Filter'
+	isHidden
+	lineageTag: 36a885fd-210d-45e0-9df4-af0665b79104
+
+	calculationGroup
+
+		calculationItem 'All Matches' =
+				IF (
+				    ISFILTERED ( 'Team'[Team] ) || ISFILTERED ( 'Player'[Player Name] ),
+				    VAR _MatchesOfTeam =
+				        VALUES ( 'Team Players'[match_id] )
+				    VAR _MatchesLineage =
+				        TREATAS ( _MatchesOfTeam, 'Match'[match_id] )
+				    RETURN
+				        CALCULATE (
+				            SELECTEDMEASURE (),
+				            REMOVEFILTERS ( 'Team'[Team] ),
+				            REMOVEFILTERS ( 'Player'[Player Name] ),
+				            KEEPFILTERS ( _MatchesLineage )
+				        ),
+				    SELECTEDMEASURE ()
+				)
+
+		calculationItem 'Highest Score Match' =
+				VAR _Matches =
+				    CALCULATETABLE (
+				        ADDCOLUMNS ( VALUES ( 'Match'[match_id] ), "@HighestScore", [Batter's Runs] ),
+				        ALLSELECTED ()
+				    )
+				VAR _TopMatches =
+				    TOPN ( 1, _Matches, [@HighestScore], DESC )
+				RETURN
+				    CALCULATE (
+				        SELECTEDMEASURE (),
+				        REMOVEFILTERS ( 'Team'[Team] ),
+				        REMOVEFILTERS ( 'Player'[Player Name] ),
+				        KEEPFILTERS ( _TopMatches )
+				    )
+
+		calculationItem 'Highest Wicket Match' =
+				VAR _Matches =
+				    CALCULATETABLE (
+				        ADDCOLUMNS ( VALUES ( 'Match'[match_id] ), "@Wickets", [Wickets #] ),
+				        ALLSELECTED ()
+				    )
+				VAR _TopMatches =
+				    TOPN ( 1, _Matches, [@Wickets], DESC )
+				RETURN
+				    CALCULATE (
+				        SELECTEDMEASURE (),
+				        REMOVEFILTERS ( 'Team'[Team] ),
+				        REMOVEFILTERS ( 'Player'[Player Name] ),
+				        KEEPFILTERS ( _TopMatches )
+				    )
+
+		calculationItem '100s Matches' =
+				VAR _Matches =
+				    CALCULATETABLE (
+				        ADDCOLUMNS (
+				            SUMMARIZE ( 'Deliveries', 'Match'[match_id], 'Deliveries'[batter_id] ),
+				            "@Runs", [Batter's Runs]
+				        ),
+				        ALLSELECTED ()
+				    )
+				VAR _TopMatches =
+				    FILTER ( _Matches, [@Runs] >= 100 )
+				VAR _MatchIds =
+				    SELECTCOLUMNS ( _TopMatches, 'Match'[match_id] )
+				RETURN
+				    CALCULATE (
+				        SELECTEDMEASURE (),
+				        REMOVEFILTERS ( 'Team'[Team] ),
+				        REMOVEFILTERS ( 'Player'[Player Name] ),
+				        KEEPFILTERS ( _MatchIds )
+				    )
+
+		calculationItem '5 Wickets Matches' =
+				VAR _Matches =
+				    CALCULATETABLE (
+				        ADDCOLUMNS (
+				            SUMMARIZE ( 'Deliveries', 'Match'[match_id], 'Deliveries'[bowler_id] ),
+				            "@Wickets", [Wickets #]
+				        ),
+				        ALLSELECTED ()
+				    )
+				VAR _TopMatches =
+				    FILTER ( _Matches, [@Wickets] >= 5 )
+				VAR _MatchIds =
+				    SELECTCOLUMNS ( _TopMatches, 'Match'[match_id] )
+				RETURN
+				    CALCULATE (
+				        SELECTEDMEASURE (),
+				        REMOVEFILTERS ( 'Team'[Team] ),
+				        REMOVEFILTERS ( 'Player'[Player Name] ),
+				        KEEPFILTERS ( _MatchIds )
+				    )
+
+		calculationItem 'Highest 6s Match' =
+				VAR _Matches =
+				    CALCULATETABLE (
+				        ADDCOLUMNS ( VALUES ( 'Match'[match_id] ), "@Sixes", [Sixes #] ),
+				        ALLSELECTED ()
+				    )
+				VAR _TopMatches =
+				    TOPN ( 1, _Matches, [@Sixes], DESC )
+				RETURN
+				    CALCULATE (
+				        SELECTEDMEASURE (),
+				        REMOVEFILTERS ( 'Team'[Team] ),
+				        REMOVEFILTERS ( 'Player'[Player Name] ),
+				        KEEPFILTERS ( _TopMatches )
+				    )
+
+		calculationItem 'Highest 4s Match' =
+				VAR _Matches =
+				    CALCULATETABLE (
+				        ADDCOLUMNS ( VALUES ( 'Match'[match_id] ), "@Fours", [Fours #] ),
+				        ALLSELECTED ()
+				    )
+				VAR _TopMatches =
+				    TOPN ( 1, _Matches, [@Fours], DESC )
+				RETURN
+				    CALCULATE (
+				        SELECTEDMEASURE (),
+				        REMOVEFILTERS ( 'Team'[Team] ),
+				        REMOVEFILTERS ( 'Player'[Player Name] ),
+				        KEEPFILTERS ( _TopMatches )
+				    )
+
+		calculationItem 'Highest Runs per Over Match' =
+				VAR _Matches =
+				    CALCULATETABLE (
+				        ADDCOLUMNS (
+				            SUMMARIZE (
+				                'Deliveries',
+				                'Match'[match_id],
+				                'Deliveries'[innings],
+				                'Deliveries'[overs]
+				            ),
+				            "@HighestScore", [Overall Runs]
+				        ),
+				        ALLSELECTED ()
+				    )
+				VAR _TopMatches =
+				    TOPN ( 1, _Matches, [@HighestScore], DESC )
+				VAR _MatchIds =
+				    SELECTCOLUMNS ( _TopMatches, 'Match'[match_id] )
+				RETURN
+				    CALCULATE (
+				        SELECTEDMEASURE (),
+				        REMOVEFILTERS ( 'Team'[Team] ),
+				        REMOVEFILTERS ( 'Player'[Player Name] ),
+				        KEEPFILTERS ( _MatchIds )
+				    )
+
+		calculationItem 'Highest Wickets per Over Match' =
+				VAR _Matches =
+				    CALCULATETABLE (
+				        ADDCOLUMNS (
+				            SUMMARIZE (
+				                'Deliveries',
+				                'Match'[match_id],
+				                'Deliveries'[innings],
+				                'Deliveries'[overs]
+				            ),
+				            "@Wickets", [Wickets #]
+				        ),
+				        ALLSELECTED ()
+				    )
+				VAR _TopMatches =
+				    TOPN ( 1, _Matches, [@Wickets], DESC )
+				VAR _MatchIds =
+				    SELECTCOLUMNS ( _TopMatches, 'Match'[match_id] )
+				RETURN
+				    CALCULATE (
+				        SELECTEDMEASURE (),
+				        REMOVEFILTERS ( 'Team'[Team] ),
+				        REMOVEFILTERS ( 'Player'[Player Name] ),
+				        KEEPFILTERS ( _MatchIds )
+				    )
+
+		calculationItem 'Tied Matches' =
+				VAR _MatchesOfTeam =
+				    CALCULATETABLE ( VALUES ( 'Match'[match_id] ), 'Match'[Match Result] = "tie" )
+				RETURN
+				    CALCULATE (
+				        SELECTEDMEASURE (),
+				        REMOVEFILTERS ( 'Team'[Team] ),
+				        REMOVEFILTERS ( 'Player'[Player Name] ),
+				        KEEPFILTERS ( _MatchesOfTeam )
+				    )
+
+		calculationItem 'Enable Team Filter' =
+				IF (
+				    ISFILTERED ( 'Team'[Team] ) && NOT ISINSCOPE ( 'Team'[Team] ),
+				    IF ( NOT ISEMPTY ( 'Team Players' ), SELECTEDMEASURE () ),
+				    SELECTEDMEASURE ()
+				)
+
+	column 'Team Match Filter Activator'
+		dataType: string
+		lineageTag: 0f22deed-7f5d-4bf4-b96e-ce659580d7dc
+		summarizeBy: none
+		sourceColumn: Name
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_COLUMNS"]}
+

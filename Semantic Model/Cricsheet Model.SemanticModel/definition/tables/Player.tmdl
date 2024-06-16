@@ -1,0 +1,36 @@
+table Player
+	lineageTag: 0256e88e-328f-4764-a135-ef906efdbfd9
+	sourceLineageTag: [dbo].[t_dim_player]
+
+	column player_id
+		dataType: int64
+		isHidden
+		isKey
+		formatString: 0
+		sourceProviderType: bigint
+		lineageTag: e79d1e6b-b49a-4d5b-90ec-c5ef31ce8385
+		sourceLineageTag: player_id
+		summarizeBy: none
+		sourceColumn: player_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Player Name'
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: e0606490-3515-4e07-a704-878a52242fba
+		sourceLineageTag: player_name
+		summarizeBy: none
+		sourceColumn: player_name
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Player = entity
+		mode: directLake
+		source
+			entityName: t_dim_player
+			schemaName: dbo
+			expressionSource: DatabaseQuery
+
+	annotation IsTableInBiModel = True
+

@@ -6,7 +6,7 @@
       "connectionString": "Data Source=powerbi://api.powerbi.com/v1.0/myorg/Cricsheet;Initial Catalog=\"Cricsheet Model\";Access Mode=readonly;Integrated Security=ClaimsToken",
       "pbiServiceModelId": null,
       "pbiModelVirtualServerName": "sobe_wowvirtualserver",
-      "pbiModelDatabaseName": "ad317124-4c8c-4b63-8368-45f0c0fb86ca",
+      "pbiModelDatabaseName": "dbfdfa43-c623-4b88-8d4c-f3a7854da1c9",
       "name": "EntityDataSource",
       "connectionType": "pbiServiceXmlaStyleLive"
     }

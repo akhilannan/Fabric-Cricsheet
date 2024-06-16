@@ -1,0 +1,7 @@
+expression DatabaseQuery =
+		let
+		    database = Sql.Database("Fabric SQL Connection String", "SQL Analytics Endpoint ID")
+		in
+		    database
+	lineageTag: 7d8df1da-ff61-4ab8-95bf-e33335b82716
+

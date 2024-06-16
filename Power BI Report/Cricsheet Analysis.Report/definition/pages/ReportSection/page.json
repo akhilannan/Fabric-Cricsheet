@@ -1,0 +1,81 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/1.0.0/schema.json",
+  "name": "ReportSection",
+  "displayName": "Overview",
+  "displayOption": "ActualSize",
+  "height": 720,
+  "width": 1280,
+  "objects": {
+    "background": [
+      {
+        "properties": {
+          "color": {
+            "solid": {
+              "color": {
+                "expr": {
+                  "Literal": {
+                    "Value": "'#F0F0F0'"
+                  }
+                }
+              }
+            }
+          },
+          "transparency": {
+            "expr": {
+              "Literal": {
+                "Value": "0D"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "visualInteractions": [
+    {
+      "source": "ea372ccdeb89137d7d8d",
+      "target": "49998f9d85feb66d6a6d",
+      "type": "NoFilter"
+    },
+    {
+      "source": "565da2e60637d0ad23ce",
+      "target": "d0db7c2081c4050bb79c",
+      "type": "NoFilter"
+    },
+    {
+      "source": "565da2e60637d0ad23ce",
+      "target": "f560a085c7399680aa37",
+      "type": "NoFilter"
+    },
+    {
+      "source": "ea372ccdeb89137d7d8d",
+      "target": "d0db7c2081c4050bb79c",
+      "type": "NoFilter"
+    },
+    {
+      "source": "ea372ccdeb89137d7d8d",
+      "target": "f560a085c7399680aa37",
+      "type": "NoFilter"
+    },
+    {
+      "source": "74f56925cc722c88f57f",
+      "target": "f560a085c7399680aa37",
+      "type": "DataFilter"
+    },
+    {
+      "source": "74f56925cc722c88f57f",
+      "target": "d0db7c2081c4050bb79c",
+      "type": "NoFilter"
+    },
+    {
+      "source": "49998f9d85feb66d6a6d",
+      "target": "f560a085c7399680aa37",
+      "type": "DataFilter"
+    },
+    {
+      "source": "49998f9d85feb66d6a6d",
+      "target": "d0db7c2081c4050bb79c",
+      "type": "DataFilter"
+    }
+  ]
+}

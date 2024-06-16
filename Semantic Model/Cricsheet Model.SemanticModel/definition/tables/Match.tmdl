@@ -1,0 +1,188 @@
+table Match
+	lineageTag: bbec02f0-5ade-4f81-a8a2-f43136658d60
+	sourceLineageTag: [dbo].[t_dim_match]
+
+	column match_id
+		dataType: int64
+		isHidden
+		isKey
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: b15258c9-a38a-4652-bc0a-58df67e2d35a
+		sourceLineageTag: match_id
+		summarizeBy: none
+		sourceColumn: match_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Match Gender'
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: e9501c1d-e767-4954-9379-684fb48e7c18
+		sourceLineageTag: match_gender
+		summarizeBy: none
+		sourceColumn: match_gender
+
+		annotation SummarizationSetBy = Automatic
+
+	column Season
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: 6f6d6f1c-ce6e-49df-aabb-44c331a6ccef
+		sourceLineageTag: season
+		summarizeBy: none
+		sourceColumn: season
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Event Name'
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: e8e16d6e-2e6a-4ed1-aa9b-d974341bdf61
+		sourceLineageTag: event_name
+		summarizeBy: none
+		sourceColumn: event_name
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Event Match Number'
+		dataType: int64
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: cfc9b119-c43f-46d9-a588-6c040600e4ad
+		sourceLineageTag: event_match_number
+		summarizeBy: none
+		sourceColumn: event_match_number
+
+		annotation SummarizationSetBy = Automatic
+
+	column City
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: 0c4d11df-7a80-4a9f-9b58-87064bf07ba8
+		sourceLineageTag: city
+		dataCategory: City
+		summarizeBy: none
+		sourceColumn: city
+
+		annotation SummarizationSetBy = Automatic
+
+	column Venue
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: 1e9129ac-f3aa-4e1a-a01a-c553b262d947
+		sourceLineageTag: venue
+		summarizeBy: none
+		sourceColumn: venue
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Match Type'
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: cefc9e9a-305b-422a-8220-71a1b15eae1c
+		sourceLineageTag: match_type
+		summarizeBy: none
+		sourceColumn: match_type
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Toss Decision'
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: b3dd9893-4496-45b6-8a13-c0c05808019d
+		sourceLineageTag: toss_decision
+		summarizeBy: none
+		sourceColumn: toss_decision
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Match Result'
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: 22f33c12-b1aa-4e93-9c55-4b1f53807c2a
+		sourceLineageTag: match_result
+		summarizeBy: none
+		sourceColumn: match_result
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Team Type'
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: 57715c67-9d16-4f07-a844-e9990b741936
+		sourceLineageTag: team_type
+		summarizeBy: none
+		sourceColumn: team_type
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Event Group'
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: 66d43bd9-6a1c-4ff6-baeb-aa21b3ee0706
+		sourceLineageTag: event_group
+		summarizeBy: none
+		sourceColumn: event_group
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Match Result Method'
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: a38721b4-d996-45ca-9a27-76411ab1e148
+		sourceLineageTag: match_result_method
+		summarizeBy: none
+		sourceColumn: match_result_method
+
+		annotation SummarizationSetBy = Automatic
+
+	column Umpires
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: ad850f5e-3536-4db9-85ac-d80688cf336f
+		sourceLineageTag: umpires
+		summarizeBy: none
+		sourceColumn: umpires
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Match Won by Runs'
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: 83ef820e-6b1e-4b84-915a-caa25e3327e9
+		sourceLineageTag: match_result
+		summarizeBy: none
+		sourceColumn: match_won_by_runs
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Match Won by Wickets'
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: 9aa74d1f-9866-4b32-82cd-bc5d8fb9ccd9
+		sourceLineageTag: match_result
+		summarizeBy: none
+		sourceColumn: match_won_by_wickets
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Match Won by Innings'
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: d3fd9099-c52c-46a1-8a62-bb14dbbf62b5
+		sourceLineageTag: match_result
+		summarizeBy: none
+		sourceColumn: match_won_by_innings
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Match = entity
+		mode: directLake
+		source
+			entityName: t_dim_match
+			schemaName: dbo
+			expressionSource: DatabaseQuery
+
+	annotation IsTableInBiModel = True
+

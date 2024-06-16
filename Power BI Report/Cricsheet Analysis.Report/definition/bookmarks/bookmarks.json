@@ -1,0 +1,22 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/bookmarksMetadata/1.0.0/schema.json",
+  "items": [
+    {
+      "name": "Bookmarkc4e3aae0c40cc40c39ea",
+      "displayName": "Switcher",
+      "children": [
+        "Bookmarkef1ab2e33eab802c19db",
+        "Bookmark37188553aa40400e6cf0"
+      ]
+    },
+    {
+      "name": "Bookmark90020c7ca1217da39afe",
+      "displayName": "Scorecard Switcher",
+      "children": [
+        "Bookmarkb5eed0cd28935db2b130",
+        "Bookmark31ce50c952189776f573",
+        "Bookmarkcc77e52ca60c53a9e2c6"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1273 @@
+table Deliveries
+	lineageTag: d9374cd6-a1e5-4e8a-b020-3caccc840434
+	sourceLineageTag: [dbo].[t_fact_deliveries]
+
+	measure '5 Wickets #' =
+			
+			CALCULATE (
+			    COUNTROWS (
+			        FILTER (
+			            SUMMARIZE (
+			                Deliveries,
+			                Deliveries[match_id],
+			                Deliveries[innings],
+			                Player[Player Name]
+			            ),
+			            [Wickets #] >= 5
+			        )
+			    ),
+			    USERELATIONSHIP ( Deliveries[bowler_id], Player[player_id] ),
+			    USERELATIONSHIP ( Deliveries[bowling_team_id], Team[team_id] )
+			)
+		formatString: #,0
+		displayFolder: Bowling
+		lineageTag: 5ed66846-7561-4877-9da6-5b7dae5b7f76
+
+		changedProperty = FormatString
+
+	measure '50s #' =
+			
+			COUNTROWS (
+			    FILTER (
+			        SUMMARIZE (
+			            Deliveries,
+			            Deliveries[match_id],
+			            Deliveries[innings],
+			            Player[Player Name]
+			        ),
+			        VAR _Runs = [Batter's Runs]
+			        RETURN
+			            _Runs >= 50
+			                && _Runs < 100
+			    )
+			)
+		formatString: #,0
+		displayFolder: Batting
+		lineageTag: 30d7046e-95c9-4d65-a324-c9c14a05302c
+
+		changedProperty = FormatString
+
+	measure 'Bat Innings #' =
+			
+			VAR _BatInnings =
+			    SUMMARIZE ( 'Deliveries', 'Deliveries'[match_id], 'Deliveries'[innings] )
+			VAR _NonStrikeInnings =
+			    CALCULATETABLE (
+			        SUMMARIZE ( 'Deliveries', 'Deliveries'[match_id], 'Deliveries'[innings] ),
+			        USERELATIONSHIP ( 'Deliveries'[non_striker_id], Player[player_id] )
+			    )
+			VAR _TotalInnings =
+			    DISTINCT ( UNION ( _BatInnings, _NonStrikeInnings ) )
+			RETURN
+			    COUNTROWS ( _TotalInnings )
+		formatString: #,0
+		displayFolder: Batting
+		lineageTag: e7a4d100-ed07-4a6d-8f3f-5bf395bdede9
+
+		changedProperty = FormatString
+
+	measure 'Batter Runs or Overall' =
+			
+			IF.EAGER (
+			    ISINSCOPE ( Player[Player Name] ),
+			    IF.EAGER (
+			        SELECTEDVALUE ( Player[player_id] ) = -1,
+			        CALCULATE (
+			            [Overall Runs] - [Batter's Runs],
+			            REMOVEFILTERS ( Player[Player Name] )
+			        ),
+			        [Batter's Runs]
+			    ),
+			    [Overall Runs]
+			)
+		formatString: #,0
+		isHidden
+		displayFolder: Batting
+		lineageTag: d62df7a9-087f-40b1-89dd-8375a2b6d2ed
+
+		changedProperty = FormatString
+
+		annotation PBI_FormatHint = {"isCustom":true}
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES"]}
+
+	measure 'Batter''s Runs' =
+			
+			SUM ( Deliveries[batter_runs] )
+		formatString: #,0
+		displayFolder: Batting
+		lineageTag: 45bed107-7953-4309-8cb7-b9694e6b6c18
+
+		changedProperty = FormatString
+
+	measure 'Batting Average' =
+			
+			DIVIDE (
+			    [Batter's Runs],
+			    CALCULATE (
+			        [Innings #],
+			        USERELATIONSHIP ( Deliveries[player_out_id], Player[player_id] )
+			    )
+			)
+		formatString: 0.00
+		displayFolder: Batting
+		lineageTag: 5f25cdbb-01f8-49d5-96b8-24b5d87e7eee
+
+		changedProperty = FormatString
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["INTEGER_FORMATTING"]}
+
+	measure 'Best Bowl Innings' =
+			
+			VAR _RunsNWickets =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE (
+			                Deliveries,
+			                Deliveries[match_id],
+			                Deliveries[innings],
+			                Player[player_id]
+			            ),
+			            "@Runs", [Conceded Runs],
+			            "@Wickets", [Wickets #]
+			        ),
+			        USERELATIONSHIP ( Deliveries[bowler_id], Player[player_id] ),
+			        USERELATIONSHIP ( Deliveries[bowling_team_id], Team[team_id] )
+			    )
+			VAR _MaxWickets =
+			    MAXX ( _RunsNWickets, [@Wickets] )
+			VAR _MinRuns =
+			    MINX ( FILTER ( _RunsNWickets, [@Wickets] = _MaxWickets ), [@Runs] )
+			RETURN
+			    IF ( NOT ISBLANK ( _MinRuns ), COALESCE ( _MaxWickets, 0 ) & "/" & _MinRuns )
+		displayFolder: Bowling
+		lineageTag: a74e8b7e-eb3b-4d23-9276-99d1a4696e06
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["PROVIDE_FORMAT_STRING_FOR_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Bowl Innings #' =
+			
+			CALCULATE (
+			    [Innings #],
+			    USERELATIONSHIP ( Deliveries[bowler_id], Player[player_id] ),
+			    USERELATIONSHIP ( Deliveries[bowling_team_id], Team[team_id] )
+			)
+		formatString: #,0
+		displayFolder: Bowling
+		lineageTag: e6caf2e6-3b93-4cd4-b5c6-39c781e52f69
+
+		changedProperty = FormatString
+
+	measure 'Bowler Overs' =
+			
+			CALCULATE (
+			    DISTINCTCOUNT ( Deliveries[overs] ),
+			    USERELATIONSHIP ( Deliveries[bowler_id], Player[player_id] ),
+			    USERELATIONSHIP ( Deliveries[bowling_team_id], Team[team_id] )
+			)
+		formatString: 0
+		displayFolder: Bowling
+		lineageTag: 9ea1c91d-1091-48dc-8ccb-b561694dfe88
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["INTEGER_FORMATTING"]}
+
+	measure 'Bowling Average' =
+			
+			DIVIDE ( [Conceded Runs], [Wickets #] )
+		formatString: 0.00
+		displayFolder: Bowling
+		lineageTag: 26acd61d-6f01-4eef-98dc-78cd8977f2e8
+
+		changedProperty = FormatString
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["INTEGER_FORMATTING"]}
+
+	measure 'Byes Runs' =
+			
+			SUM ( Deliveries[byes] )
+		formatString: #,0
+		displayFolder: Misc
+		lineageTag: 9e5bc3ec-0cc9-48b1-a40e-0fe8cbd083f1
+
+		changedProperty = FormatString
+
+	measure 'Catch #' =
+			
+			CALCULATE (
+			    [Deliveries #],
+			    USERELATIONSHIP ( Player[player_id], Deliveries[fielder_id] ),
+			    USERELATIONSHIP ( Deliveries[bowling_team_id], Team[team_id] ),
+			    Deliveries[wicket_kind] = "caught"
+			)
+			    + CALCULATE (
+			        [Deliveries #],
+			        USERELATIONSHIP ( Player[player_id], Deliveries[bowler_id] ),
+			        USERELATIONSHIP ( Deliveries[bowling_team_id], Team[team_id] ),
+			        Deliveries[wicket_kind] = "caught and bowled"
+			    )
+		formatString: #,0
+		displayFolder: Bowling
+		lineageTag: 774bcf00-1d61-4440-a89e-21dc4049916f
+
+		changedProperty = FormatString
+
+	measure 'Conceded Runs' =
+			
+			CALCULATE (
+			    [Overall Runs] - [Byes Runs] - [Leg Byes Runs],
+			    USERELATIONSHIP ( Deliveries[bowler_id], Player[player_id] ),
+			    USERELATIONSHIP ( Deliveries[bowling_team_id], Team[team_id] )
+			)
+		formatString: #,0
+		displayFolder: Bowling
+		lineageTag: 1b87e35c-1547-4a16-8353-02ec694ea274
+
+		changedProperty = FormatString
+
+	measure 'Cumulative Overall Runs' =
+			
+			IF (
+			    NOT ISEMPTY ( Deliveries ),
+			    CALCULATE ( [Overall Runs], Deliveries[overs] <= MAX ( Deliveries[overs] ) )
+			)
+		formatString: 0
+		isHidden
+		displayFolder: Misc
+		lineageTag: 2f22a81e-0112-45f2-8825-0e2b1af90b31
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["INTEGER_FORMATTING"]}
+
+	measure 'Deliveries #' =
+			
+			COUNTROWS ( Deliveries )
+		formatString: #,0
+		displayFolder: Misc
+		lineageTag: 69a80e53-88d7-4b50-9330-8176eabf5518
+
+		changedProperty = FormatString
+
+	measure 'Did not Bat' =
+			
+			VAR _StrikeBatters =
+			    SUMMARIZE ( Deliveries, 'Player'[Player Name] )
+			VAR _NonStrikeBatters =
+			    CALCULATETABLE (
+			        SUMMARIZE ( 'Deliveries', 'Player'[Player Name] ),
+			        USERELATIONSHIP ( 'Deliveries'[non_striker_id], Player[player_id] )
+			    )
+			VAR _Batters =
+			    DISTINCT ( UNION ( _StrikeBatters, _NonStrikeBatters ) )
+			VAR _TeamBatting =
+			    CALCULATETABLE (
+			        VALUES ( 'Team Players'[team_id] ),
+			        TREATAS ( _Batters, 'Player'[Player Name] )
+			    )
+			VAR _FullTeam =
+			    CALCULATETABLE (
+			        SUMMARIZE ( 'Team Players', 'Player'[Player Name] ),
+			        _TeamBatting
+			    )
+			VAR _DidNotBat =
+			    EXCEPT ( _FullTeam, _Batters )
+			RETURN
+			    CONCATENATEX ( _DidNotBat, 'Player'[Player Name], ", " )
+		isHidden
+		displayFolder: Batting
+		lineageTag: 4451f855-4f48-4a16-8c97-448579dab0f3
+
+		changedProperty = IsHidden
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure Economy =
+			
+			CALCULATE (
+			    DIVIDE ( [Conceded Runs], ( [Deliveries #] - [Wides #] - [No Balls #] ) / 6 ),
+			    USERELATIONSHIP ( Deliveries[bowler_id], Player[player_id] ),
+			    USERELATIONSHIP ( Deliveries[bowling_team_id], Team[team_id] )
+			)
+		formatString: 0.00
+		displayFolder: Bowling
+		lineageTag: a555f753-06c0-45fa-9546-3fd0e2b36ca4
+
+		changedProperty = FormatString
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["USE_THE_DIVIDE_FUNCTION_FOR_DIVISION","INTEGER_FORMATTING"]}
+
+	measure 'Extra Runs' =
+			
+			[Overall Runs] - [Batter's Runs]
+		formatString: #,0
+		displayFolder: Misc
+		lineageTag: ba92e94a-1124-47c4-b64e-6aecb0d94e7d
+
+		changedProperty = FormatString
+
+	measure 'Fall of Wickets' =
+			
+			VAR _OversAndBallsWithWicket =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Deliveries, Deliveries[overs], Deliveries[balls] ),
+			            "@TotalBalls",
+			                ( Deliveries[overs] - 1 ) * 6 + Deliveries[balls]
+			        ),
+			        NOT ISBLANK ( Deliveries[wicket_kind] )
+			    )
+			VAR _AddingAttributes =
+			    ADDCOLUMNS (
+			        _OversAndBallsWithWicket,
+			        "@TotalRuns",
+			            VAR _CurrentBall = [@TotalBalls]
+			            RETURN
+			                CALCULATE (
+			                    [Overall Runs],
+			                    ( Deliveries[overs] - 1 ) * 6 + Deliveries[balls] <= _CurrentBall
+			                ),
+			        "@WicketCount",
+			            VAR _CurrentBall = [@TotalBalls]
+			            RETURN
+			                CALCULATE (
+			                    [Wickets #] + [Other Wickets #],
+			                    ( Deliveries[overs] - 1 ) * 6 + Deliveries[balls] <= _CurrentBall
+			                ),
+			        "@PlayerOut",
+			            CALCULATE (
+			                MAXX ( Deliveries, RELATED ( 'Player'[Player Name] ) ),
+			                USERELATIONSHIP ( Deliveries[player_out_id], 'Player'[player_id] )
+			            ),
+			        "@WidesNoballs",
+			            VAR _CurrentOver = Deliveries[overs]
+			            VAR _CurrentBall = Deliveries[balls]
+			            RETURN
+			                CALCULATE (
+			                    [Wides #] + [No Balls #],
+			                    Deliveries[overs] = _CurrentOver,
+			                    Deliveries[balls] <= _CurrentBall
+			                )
+			    )
+			RETURN
+			    CONCATENATEX (
+			        _AddingAttributes,
+			        [@TotalRuns] & "-" & [@WicketCount] & " (" & [@PlayerOut] & ", " & Deliveries[overs] - 1 & "." & Deliveries[balls] - [@WidesNoballs] & ")",
+			        ", ",
+			        [@WicketCount]
+			    )
+		isHidden
+		displayFolder: Misc
+		lineageTag: fab808c3-3312-443f-9aa8-c574f7fb677d
+
+		changedProperty = IsHidden
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Final Score per Team' =
+			
+			VAR _LastOver =
+			    MAX ( Deliveries[overs] )
+			VAR _LastBall =
+			    MAXX ( Deliveries, ( Deliveries[overs] - 1 ) * 6 + Deliveries[balls] )
+			        - CALCULATE ( [Wides #] + [No Balls #], Deliveries[overs] = _LastOver )
+			VAR _OversCompleted =
+			    QUOTIENT ( _LastBall, 6 )
+			VAR _BallsCompleted =
+			    MOD ( _LastBall, 6 )
+			RETURN
+			    [Overall Runs] & "-" & [Other Wickets #] + [Wickets #] + 0 & " (" & _OversCompleted & "." & _BallsCompleted & " Ov, RR: "
+			        & FORMAT ( [Run Rate], "#.00" ) & ", Inn: "
+			        & SELECTEDVALUE ( 'Deliveries'[innings] ) & ")"
+		isHidden
+		displayFolder: Misc
+		lineageTag: dba08fed-7979-48d2-8140-46db27b14151
+
+		changedProperty = IsHidden
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["INTEGER_FORMATTING"]}
+
+	measure 'First Ball Bowled' =
+			
+			CALCULATE (
+			    MINX ( Deliveries, ( Deliveries[overs] - 1 ) * 6 + Deliveries[balls] ),
+			    USERELATIONSHIP ( Deliveries[bowler_id], Player[player_id] ),
+			    USERELATIONSHIP ( Deliveries[bowling_team_id], Team[team_id] )
+			)
+		formatString: 0
+		isHidden
+		displayFolder: Bowling
+		lineageTag: 00d4cf48-2709-423a-983e-27ea0f8ff523
+
+		changedProperty = IsHidden
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'First Ball Faced' =
+			
+			IF.EAGER (
+			    SELECTEDVALUE ( Player[player_id] ) = -1,
+			    999,
+			    MINX ( Deliveries, ( Deliveries[overs] - 1 ) * 6 + Deliveries[balls] )
+			)
+		formatString: 0
+		isHidden
+		displayFolder: Misc
+		lineageTag: 297ed745-0a72-4aa8-a3bf-54bb649a8308
+
+		changedProperty = IsHidden
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Fours #' =
+			
+			CALCULATE ( [Deliveries #], Deliveries[batter_runs] = 4 )
+		formatString: #,0
+		displayFolder: Batting
+		lineageTag: ac8a80f1-4cbc-43a5-80e4-5048ac18e669
+
+		changedProperty = FormatString
+
+	measure 'Highest Score' =
+			
+			MAXX (
+			    SUMMARIZE ( Deliveries, Deliveries[match_id], Deliveries[innings] ),
+			    [Batter's Runs]
+			)
+		formatString: #,0
+		displayFolder: Batting
+		lineageTag: 625d236c-eb61-43dc-bec7-07be12b0bf84
+
+		changedProperty = FormatString
+
+	measure 'Last Played Date' =
+			
+			MAX ( 'Team Players'[match_date] )
+		formatString: dd-MMM-yyyy
+		displayFolder: Misc
+		lineageTag: 7fc2ed13-c223-44c5-a263-8bb7d7c62366
+
+		changedProperty = FormatString
+
+		annotation PBI_FormatHint = {"isCustom":true}
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["INTEGER_FORMATTING"]}
+
+	measure 'Leg Byes Runs' =
+			
+			SUM ( Deliveries[leg_byes] )
+		formatString: #,0
+		displayFolder: Misc
+		lineageTag: d5f4b081-cb82-4332-ae40-aa5c29c0bb1d
+
+		changedProperty = FormatString
+
+	measure 'Maiden #' =
+			
+			CALCULATE (
+			    VAR _RunsPerOver =
+			        ADDCOLUMNS (
+			            SUMMARIZE (
+			                Deliveries,
+			                Deliveries[match_id],
+			                Deliveries[innings],
+			                Player[Player Name],
+			                Deliveries[overs]
+			            ),
+			            "@Runs", [Overall Runs]
+			        )
+			    VAR _NoRunsPerOver =
+			        FILTER ( _RunsPerOver, [@Runs] = 0 )
+			    RETURN
+			        COUNTROWS ( _NoRunsPerOver ),
+			    USERELATIONSHIP ( Deliveries[bowler_id], Player[player_id] ),
+			    USERELATIONSHIP ( Deliveries[bowling_team_id], Team[team_id] )
+			)
+		formatString: #,0
+		displayFolder: Bowling
+		lineageTag: 27a07d42-b520-4438-98b7-531afb21f89b
+
+		changedProperty = FormatString
+
+	measure 'Match #' =
+			
+			DISTINCTCOUNT ( 'Team Players'[match_id] )
+		formatString: #,0
+		displayFolder: Misc
+		lineageTag: 6cd22ded-cb6e-4570-a701-27048ab4acf4
+
+		changedProperty = FormatString
+
+	measure 'Match Wins #' =
+			
+			CALCULATE (
+			    [Match #],
+			    'Team Players'[match_winner_id] = 'Team Players'[team_id]
+			)
+		formatString: #,0
+		displayFolder: Misc
+		lineageTag: 0815f23f-5ad7-4acf-a783-45c5858a8d0f
+
+		changedProperty = FormatString
+
+	measure 'Max Runs Per Over' =
+			
+			CALCULATE (
+			    MAXX (
+			        SUMMARIZE (
+			            Deliveries,
+			            'Deliveries'[match_id],
+			            Deliveries[innings],
+			            Deliveries[overs]
+			        ),
+			        [Overall Runs]
+			    ),
+			    REMOVEFILTERS ( Deliveries[innings] ),
+			    ALLSELECTED ()
+			)
+		formatString: 0
+		isHidden
+		displayFolder: Misc
+		lineageTag: b79848e4-1eee-43fe-8731-0b814fab21fd
+
+		changedProperty = IsHidden
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'No Balls #' =
+			
+			CALCULATE ( [Deliveries #], Deliveries[no_balls] <> 0 )
+		formatString: #,0
+		displayFolder: Misc
+		lineageTag: 52b21d7d-673a-4171-a397-08ffe70228fe
+
+		changedProperty = FormatString
+
+	measure 'No Balls Bowled #' =
+			
+			CALCULATE (
+			    [No Balls #],
+			    USERELATIONSHIP ( Deliveries[bowler_id], Player[player_id] ),
+			    USERELATIONSHIP ( Deliveries[bowling_team_id], Team[team_id] )
+			)
+		formatString: #,0
+		displayFolder: Bowling
+		lineageTag: b789f9a9-5533-4550-bd63-95676e51a551
+
+		changedProperty = FormatString
+
+	measure 'Not Outs #' =
+			
+			VAR _MatchOuts =
+			    CALCULATE (
+			        [Innings #],
+			        USERELATIONSHIP ( Deliveries[player_out_id], 'Player'[player_id] )
+			    )
+			VAR _MatchBatted = [Bat Innings #]
+			RETURN
+			    _MatchBatted - _MatchOuts
+		formatString: #,0
+		displayFolder: Batting
+		lineageTag: 9266542b-375d-4963-ad3d-47eff6a24d20
+
+	measure 'Other Wickets #' =
+			
+			CALCULATE (
+			    [Deliveries #],
+			    USERELATIONSHIP ( Deliveries[bowler_id], Player[player_id] ),
+			    USERELATIONSHIP ( Deliveries[bowling_team_id], Team[team_id] ),
+			    Deliveries[wicket_kind]
+			        IN { "obstructing the field", "run out" }
+			)
+		formatString: #,0
+		displayFolder: Bowling
+		lineageTag: 606b8104-ab7a-407a-87aa-2974c2ada0c0
+
+		changedProperty = FormatString
+
+	measure 'Over #' =
+			
+			COUNTROWS (
+			    SUMMARIZE (
+			        Deliveries,
+			        Deliveries[match_id],
+			        'Deliveries'[innings],
+			        Deliveries[overs]
+			    )
+			)
+		formatString: #,0
+		displayFolder: Misc
+		lineageTag: 445e2591-8a91-4f4a-9b8d-d16297054b65
+
+	measure 'Overall Runs' =
+			
+			SUM ( Deliveries[total_runs] )
+		formatString: #,0
+		displayFolder: Misc
+		lineageTag: 509c063a-36c7-4fcd-bd2a-be3774aa4d5f
+
+		changedProperty = FormatString
+
+	measure 'Player of Match #' =
+			
+			CALCULATE (
+			    [Match #],
+			    USERELATIONSHIP ( 'Team Players'[player_of_match_id], Player[player_id] )
+			)
+		formatString: #,0
+		displayFolder: Misc
+		lineageTag: 4b9afb6c-c585-43d9-89fd-9aade0866d01
+
+		changedProperty = FormatString
+
+	measure 'Run Rate' =
+			
+			CALCULATE (
+			    DIVIDE ( [Overall Runs], [Over #] ),
+			    Deliveries[overs] <= MAX ( Deliveries[overs] )
+			)
+		formatString: #.00
+		displayFolder: Misc
+		lineageTag: 5c49639f-31da-4b31-a39d-16ee9c8b12a3
+
+		changedProperty = FormatString
+
+		annotation PBI_FormatHint = {"isCustom":true}
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["INTEGER_FORMATTING"]}
+
+	measure 'Runs Color' =
+			
+			IF (
+			    NOT ISBLANK ( MAX ( Deliveries[wicket_kind] ) ),
+			    "#E66C37",
+			    SWITCH (
+			        [Overall Runs],
+			        0, "#CCCCCC",
+			        1, "#B9DBFB",
+			        2, "#A0D1FF",
+			        3, "#70BBFF",
+			        4, "#41A4FF",
+			        5, "#0D6ABF",
+			        6, "#094780"
+			    )
+			)
+		isHidden
+		displayFolder: Misc
+		lineageTag: 5c4cf95d-dabc-4401-82f5-9cf88c91e0d2
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Season #' =
+			
+			COUNTROWS ( SUMMARIZE ( 'Team Players', 'Match'[Season] ) )
+		formatString: #,0
+		displayFolder: Misc
+		lineageTag: 0fc6172d-1ecf-4366-8b64-2ef581fb84e9
+
+		changedProperty = FormatString
+
+	measure 'Season Wins #' =
+			
+			VAR _LastMatchOfSeason =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( 'Team Players', 'Match'[Season] ),
+			            "@LastMatchOfSeason", CALCULATE ( MAX ( Match[match_id] ) )
+			        ),
+			        REMOVEFILTERS ( Team ),
+			        REMOVEFILTERS ( Player )
+			    )
+			VAR _LineageEnabled =
+			    TREATAS ( _LastMatchOfSeason, Match[Season], Match[match_id] )
+			RETURN
+			    CALCULATE (
+			        [Season #],
+			        KEEPFILTERS ( _LineageEnabled ),
+			        'Team Players'[match_winner_id] = 'Team Players'[team_id]
+			    )
+		formatString: #,0
+		isHidden
+		displayFolder: Misc
+		lineageTag: 47b74d9b-58c2-485d-976f-69ccf7ec9947
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES"]}
+
+	measure 'Sixes #' =
+			
+			CALCULATE ( [Deliveries #], Deliveries[batter_runs] = 6 )
+		formatString: #,0
+		displayFolder: Batting
+		lineageTag: 6ef78f1b-d99b-4a15-bb98-c7a5c361a1bb
+
+		changedProperty = FormatString
+
+	measure 'Strike Rate' =
+			
+			DIVIDE ( [Batter's Runs] * 100, [Deliveries #] - [Wides #] )
+		formatString: 0.00
+		displayFolder: Batting
+		lineageTag: 5d610a0a-5239-44c1-86d4-f2f1a21f90ec
+
+		changedProperty = FormatString
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["INTEGER_FORMATTING"]}
+
+	measure 'Total Balls per Over' =
+			
+			CALCULATE (
+			    MAX ( Deliveries[balls] ),
+			    REMOVEFILTERS ( Deliveries[innings], Deliveries[overs], Deliveries[balls] )
+			)
+		formatString: 0
+		isHidden
+		displayFolder: Misc
+		lineageTag: a2bccab0-7597-46b3-a6df-7c5060563c58
+
+		changedProperty = IsHidden
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Total Overs' =
+			
+			SWITCH (
+			    MAX ( Match[Match Type] ),
+			    "T20", 20,
+			    "ODI", 50,
+			    CALCULATE (
+			        MAX ( Deliveries[overs] ),
+			        REMOVEFILTERS ( Deliveries[overs], Deliveries[innings] )
+			    )
+			)
+		formatString: 0
+		isHidden
+		displayFolder: Misc
+		lineageTag: 6d1bc84a-2cfe-4996-aa1a-91440241837c
+
+		changedProperty = IsHidden
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Wicket Details' =
+			
+			VAR _outPlayer = [Player Out Name]
+			RETURN
+			    IF ( NOT ISBLANK ( _outPlayer ), _outPlayer & " - " & [Wicket Status] )
+		isHidden
+		displayFolder: Misc
+		lineageTag: 36002050-3064-4f3e-9268-de28cdda7a73
+
+		changedProperty = IsHidden
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Wicket Status' =
+			
+			VAR _hasValue =
+			    NOT ISEMPTY ( Deliveries )
+			        || CALCULATE (
+			            NOT ISEMPTY ( Deliveries ),
+			            USERELATIONSHIP ( 'Deliveries'[non_striker_id], Player[player_id] )
+			        )
+			RETURN
+			    CALCULATE (
+			        VAR _WicketKind =
+			            MAX ( Deliveries[wicket_kind] )
+			        VAR _Bowler =
+			            CALCULATE (
+			                MAX ( Player[Player Name] ),
+			                REMOVEFILTERS ( Player ),
+			                Player[player_id] = MAX ( 'Deliveries'[bowler_id] )
+			            )
+			        VAR _Fielder =
+			            CALCULATE (
+			                MAX ( Player[Player Name] ),
+			                REMOVEFILTERS ( Player ),
+			                Player[player_id] = MAX ( 'Deliveries'[fielder_id] )
+			            )
+			        RETURN
+			            IF (
+			                ISINSCOPE ( Player[Player Name] ) || ISINSCOPE ( Deliveries[overs] ),
+			                COALESCE (
+			                    SWITCH (
+			                        _WicketKind,
+			                        "caught",
+			                            "c " & _Fielder & " b " & _Bowler,
+			                        "caught and bowled", "c & b " & _Bowler,
+			                        "run out",
+			                            "run out (" & _Fielder & ")",
+			                        "bowled", "b " & _Bowler,
+			                        "stumped",
+			                            "st " & _Fielder & " b " & _Bowler,
+			                        "lbw", "lbw b " & _Bowler,
+			                        "hit wicket", "hit wkt b " & _Bowler,
+			                        _WicketKind
+			                    ),
+			                    IF ( _hasValue, "not out" )
+			                )
+			            ),
+			        USERELATIONSHIP ( Deliveries[player_out_id], Player[player_id] )
+			    )
+		isHidden
+		displayFolder: Misc
+		lineageTag: 92ec9886-2d80-4d8a-a77c-31542dff386c
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["INTEGER_FORMATTING"]}
+
+	measure 'Wickets #' =
+			
+			CALCULATE (
+			    [Wickets # of Batting Team],
+			    USERELATIONSHIP ( Deliveries[bowling_team_id], Team[team_id] )
+			)
+		formatString: #,0
+		displayFolder: Bowling
+		lineageTag: 942a249b-3783-4635-87dd-c74abf334602
+
+	measure 'Wides #' =
+			
+			CALCULATE ( [Deliveries #], Deliveries[wides] <> 0 )
+		formatString: #,0
+		displayFolder: Misc
+		lineageTag: 7edde242-0d7e-458e-865d-dbee5183c7b7
+
+		changedProperty = FormatString
+
+	measure 'Wides Bowled #' =
+			
+			CALCULATE (
+			    [Wides #],
+			    USERELATIONSHIP ( Deliveries[bowler_id], Player[player_id] ),
+			    USERELATIONSHIP ( Deliveries[bowling_team_id], Team[team_id] )
+			)
+		formatString: #,0
+		displayFolder: Bowling
+		lineageTag: dafcdbb3-f2ac-4e24-a41c-919c88fa1055
+
+		changedProperty = FormatString
+
+	measure 'Win Ratio' =
+			
+			DIVIDE ( [Match Wins #], [Match #] )
+		formatString: 0%;-0%;0%
+		displayFolder: Misc
+		lineageTag: d24d1922-487a-4bab-b91a-c96864a7b553
+
+		changedProperty = FormatString
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["PERCENTAGE_FORMATTING"]}
+
+	measure 'Year Span' =
+			
+			VAR _MinYear =
+			    YEAR ( MIN ( 'Team Players'[match_date] ) )
+			VAR _MaxYear =
+			    YEAR ( MAX ( 'Team Players'[match_date] ) )
+			RETURN
+			    IF ( NOT ISBLANK ( _MaxYear ), _MinYear & "-" & _MaxYear )
+		displayFolder: Misc
+		lineageTag: b7e9aaa0-2549-450f-84b9-ecfb81d23f5a
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["PROVIDE_FORMAT_STRING_FOR_MEASURES","INTEGER_FORMATTING"]}
+
+	measure '100s #' =
+			
+			COUNTROWS (
+			    FILTER (
+			        SUMMARIZE (
+			            Deliveries,
+			            Deliveries[match_id],
+			            Deliveries[innings],
+			            Player[Player Name]
+			        ),
+			        [Batter's Runs] >= 100
+			    )
+			)
+		formatString: #,0
+		displayFolder: Batting
+		lineageTag: 8eece48e-e217-4bc3-840e-e0cbc25afa37
+
+		changedProperty = FormatString
+
+	measure 'Innings #' =
+			
+			COUNTROWS (
+			    SUMMARIZE ( 'Deliveries', 'Deliveries'[match_id], 'Deliveries'[innings] )
+			)
+		formatString: #,0
+		displayFolder: Misc
+		lineageTag: a1323a71-9d0a-4ff4-a8b1-c2a5178b4d4c
+
+	measure 'Batting Team with Score' =
+			
+			IF (
+			    NOT ISEMPTY ( 'Deliveries' ),
+			    MAXX ( Deliveries, RELATED ( 'Team'[Team] ) ) & ": " & [Final Score per Team]
+			)
+		isHidden
+		displayFolder: Batting
+		lineageTag: e6821455-0842-45d6-8cbb-fa0376274e14
+
+		changedProperty = IsHidden
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Bowler Name' =
+			
+			CALCULATE (
+			    MAXX ( 'Deliveries', RELATED ( 'Player'[Player Name] ) ),
+			    USERELATIONSHIP ( Deliveries[bowler_id], Player[player_id] ),
+			    USERELATIONSHIP ( Deliveries[bowling_team_id], Team[team_id] )
+			)
+		isHidden
+		displayFolder: Bowling
+		lineageTag: a4655852-6fc8-40f6-a951-f082dcfe0497
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Batsman Name' =
+			
+			MAXX ( 'Deliveries', RELATED ( 'Player'[Player Name] ) )
+		isHidden
+		displayFolder: Batting
+		lineageTag: c6d7adb0-0ce6-40d0-a405-2c644aad5930
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Player Out Name' =
+			
+			CALCULATE (
+			    MAXX ( 'Deliveries', RELATED ( 'Player'[Player Name] ) ),
+			    USERELATIONSHIP ( 'Deliveries'[player_out_id], 'Player'[player_id] )
+			)
+		isHidden
+		displayFolder: Batting
+		lineageTag: 272411e4-5d4f-4e2b-a4b4-3bce03bb7fb5
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["INTEGER_FORMATTING"]}
+
+	measure 'Cumulative Wickets Score' =
+			
+			IF (
+			    NOT ISBLANK ( MAX ( Deliveries[wicket_kind] ) ),
+			    [Cumulative Overall Runs]
+			)
+		formatString: 0
+		isHidden
+		displayFolder: Misc
+		lineageTag: ec4a8bc5-33c3-4d21-a3b1-4db977b0dedf
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Cumulative Wickets' =
+			
+			IF (
+			    NOT ISEMPTY ( Deliveries ),
+			    CALCULATE (
+			        [Wickets # of Batting Team],
+			        Deliveries[overs] <= MAX ( Deliveries[overs] )
+			    )
+			)
+		formatString: 0
+		isHidden
+		displayFolder: Misc
+		lineageTag: e50df5b7-c0ad-49ed-8a71-0ce1b1c2f4e5
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Final Score' =
+			
+			CONCATENATEX (
+			    SUMMARIZE ( 'Deliveries', 'Deliveries'[innings], 'Team'[Team] ),
+			    VAR _BattingTeam = 'Team'[Team]
+			    VAR _ScoreBattingTeam = [Overall Runs]
+			    VAR _WicketsOfBattingTeam =
+			        CALCULATE ( [Deliveries #], NOT ISBLANK ( Deliveries[wicket_kind] ) )
+			    RETURN
+			        _BattingTeam & ": " & _ScoreBattingTeam & "-"
+			            & COALESCE ( _WicketsOfBattingTeam, 0 ),
+			    UNICHAR ( 10 ),
+			    'Deliveries'[innings]
+			)
+		isHidden
+		displayFolder: Misc
+		lineageTag: b044a995-d15b-4e71-a1a2-a0e5016af2a5
+
+		changedProperty = IsHidden
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Matches won Fielding First #' =
+			
+			CALCULATE (
+			    [Match #],
+			    'Team Players'[match_winner_id] = 'Team Players'[team_id]
+			        && 'Team Players'[first_field_id] = 'Team Players'[team_id]
+			)
+		formatString: #,0
+		displayFolder: Bowling
+		lineageTag: e73f72a4-4160-451b-bc41-77c52ba10b08
+
+		changedProperty = FormatString
+
+	measure 'Matches won Batting First #' =
+			
+			CALCULATE (
+			    [Match #],
+			    'Team Players'[match_winner_id] = 'Team Players'[team_id]
+			        && 'Team Players'[first_bat_id] = 'Team Players'[team_id]
+			)
+		formatString: #,0
+		displayFolder: Batting
+		lineageTag: 64290324-5b50-476c-a7e7-edfdb7026044
+
+		changedProperty = FormatString
+
+	measure 'Wickets # of Batting Team' =
+			
+			CALCULATE (
+			    [Deliveries #],
+			    USERELATIONSHIP ( Deliveries[bowler_id], Player[player_id] ),
+			    Deliveries[wicket_kind]
+			        IN { "bowled", "caught", "caught and bowled", "lbw", "stumped", "hit wicket" }
+			)
+		formatString: #,0
+		isHidden
+		displayFolder: Misc
+		lineageTag: bea9b4e9-7299-447d-8a91-b68f602cd65d
+
+	column match_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: 804765d7-a576-4df1-a7bc-5cc67dcb5ccd
+		sourceLineageTag: match_id
+		summarizeBy: none
+		sourceColumn: match_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column innings
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: f3f3aa55-6bf4-4172-bb51-e78547b2a586
+		sourceLineageTag: innings
+		summarizeBy: none
+		sourceColumn: innings
+
+		annotation SummarizationSetBy = Automatic
+
+	column overs
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: 0f03c8e8-70c5-4fde-a677-9bcabb108308
+		sourceLineageTag: overs
+		summarizeBy: none
+		sourceColumn: overs
+
+		annotation SummarizationSetBy = Automatic
+
+	column balls
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: 7d6066fa-455f-487c-9adc-a2a7d1a2a9c4
+		sourceLineageTag: balls
+		summarizeBy: none
+		sourceColumn: balls
+
+		annotation SummarizationSetBy = Automatic
+
+	column batter_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: bigint
+		lineageTag: cd1a13fd-eba6-495a-bb8a-9094e077654b
+		sourceLineageTag: batter_id
+		summarizeBy: none
+		sourceColumn: batter_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column bowler_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: bigint
+		lineageTag: cc4ca274-cc56-490e-94c2-faca44cd170e
+		sourceLineageTag: bowler_id
+		summarizeBy: none
+		sourceColumn: bowler_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column byes
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: 966c834f-0c08-44f4-b393-0f157828d65c
+		sourceLineageTag: byes
+		summarizeBy: none
+		sourceColumn: byes
+
+		annotation SummarizationSetBy = Automatic
+
+	column leg_byes
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: 0d3be281-e823-48ea-a2ac-8957c33b7313
+		sourceLineageTag: leg_byes
+		summarizeBy: none
+		sourceColumn: leg_byes
+
+		annotation SummarizationSetBy = Automatic
+
+	column no_balls
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: 9486ec56-9a41-4563-a52b-a3d2f841632d
+		sourceLineageTag: no_balls
+		summarizeBy: none
+		sourceColumn: no_balls
+
+		annotation SummarizationSetBy = Automatic
+
+	column wides
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: 4fe72ac4-69e5-4b5e-9685-661201aa2dc3
+		sourceLineageTag: wides
+		summarizeBy: none
+		sourceColumn: wides
+
+		annotation SummarizationSetBy = Automatic
+
+	column non_striker_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: bigint
+		lineageTag: 202f8ab8-2628-422d-baf1-f4881a9059e6
+		sourceLineageTag: non_striker_id
+		summarizeBy: none
+		sourceColumn: non_striker_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column batter_runs
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: 02c2258c-f8d4-4d67-933b-0078f917aac3
+		sourceLineageTag: batter_runs
+		summarizeBy: none
+		sourceColumn: batter_runs
+
+		annotation SummarizationSetBy = Automatic
+
+	column total_runs
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: 94aa8bb0-e036-410e-bb2a-5becb9c33b55
+		sourceLineageTag: total_runs
+		summarizeBy: none
+		sourceColumn: total_runs
+
+		annotation SummarizationSetBy = Automatic
+
+	column wicket_kind
+		dataType: string
+		isHidden
+		sourceProviderType: varchar
+		lineageTag: 33eabbcd-931c-4aa2-b995-7a58601436d3
+		sourceLineageTag: wicket_kind
+		summarizeBy: none
+		sourceColumn: wicket_kind
+
+		annotation SummarizationSetBy = Automatic
+
+	column player_out_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: bigint
+		lineageTag: b092331a-8600-4c6b-bfe0-d83ec16c7b90
+		sourceLineageTag: player_out_id
+		summarizeBy: none
+		sourceColumn: player_out_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column fielder_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: bigint
+		lineageTag: 6c0d094f-9303-481e-a80b-a71a428fd2b6
+		sourceLineageTag: fielder_id
+		summarizeBy: none
+		sourceColumn: fielder_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column batting_team_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: 36e4fc3f-690b-4b8d-95b8-970d555fdbd5
+		sourceLineageTag: match_id
+		summarizeBy: none
+		sourceColumn: batting_team_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column match_date
+		dataType: dateTime
+		isHidden
+		formatString: dd-MMM-yyyy
+		sourceProviderType: date
+		lineageTag: 41840ad2-8d56-4410-a5ad-84a4cf099c4e
+		sourceLineageTag: match_date
+		summarizeBy: none
+		sourceColumn: match_date
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["RELATIONSHIP_COLUMNS_SHOULD_BE_OF_INTEGER_DATA_TYPE","DATECOLUMN_FORMATSTRING"]}
+
+	column bowling_team_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: 652368e7-55b4-4f9a-9ded-17936a4741c3
+		sourceLineageTag: match_id
+		summarizeBy: none
+		sourceColumn: bowling_team_id
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Deliveries = entity
+		mode: directLake
+		source
+			entityName: t_fact_deliveries
+			schemaName: dbo
+			expressionSource: DatabaseQuery
+
+	annotation IsTableInBiModel = True
+

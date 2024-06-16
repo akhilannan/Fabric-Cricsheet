@@ -1,0 +1,136 @@
+table Job
+	lineageTag: 0cb008d3-c3e2-4148-bdbd-ce31830cc9e9
+	sourceLineageTag: [dbo].[t_job]
+
+	measure 'Duration, sec' =
+			
+			SUMX (
+			    Job,
+			    DATEDIFF ( Job[Start Time], COALESCE ( Job[End Time], NOW () ), SECOND )
+			)
+		formatString: #,0
+		lineageTag: fe642b7a-8b12-45c3-8fbf-a22feaad8818
+
+	measure 'Parent Job Name' =
+			
+			CALCULATE (
+			    SELECTEDVALUE ( Job[Job Name] ),
+			    Job[Job ID] = MAX ( Job[Parent Job ID] ),
+			    REMOVEFILTERS ()
+			)
+		lineageTag: b64b69e0-87b1-477d-bb64-2a0d815e9c52
+
+	measure 'Time Elapsed' =
+			
+			VAR _TotalSeconds = [Duration, sec]
+			VAR _Days =
+			    INT ( _TotalSeconds / 86400 )
+			VAR _Hours =
+			    MOD ( INT ( _TotalSeconds / 3600 ), 24 )
+			VAR _Minutes =
+			    MOD ( INT ( _TotalSeconds / 60 ), 60 )
+			VAR _Seconds =
+			    MOD ( _TotalSeconds, 60 )
+			RETURN
+			    IF ( _Days > 0, FORMAT ( _Days, "0" ) & " day " )
+			        & IF ( _Hours > 0, FORMAT ( _Hours, "0" ) & "hrs " )
+			        & IF ( _Minutes > 0, FORMAT ( _Minutes, "0" ) & " min " )
+			        & IF ( _Seconds > 0, FORMAT ( _Seconds, "0" ) & " sec" )
+		lineageTag: 37978aa9-3be0-4a83-b8e8-b7423b6ea8f3
+
+	measure 'Job #' =
+			
+			COUNTROWS ( 'Job' )
+		lineageTag: d14906fd-9d66-4174-9894-ed97e98d5d3f
+
+	column 'Job ID'
+		dataType: string
+		sourceProviderType: varchar(8000)
+		lineageTag: ea632930-d0ae-46db-8ac5-6a7740700a36
+		sourceLineageTag: job_id
+		summarizeBy: none
+		sourceColumn: job_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Parent Job ID'
+		dataType: string
+		sourceProviderType: varchar(8000)
+		lineageTag: c1b9b726-c9e3-4ccb-94bb-4bd06bf68915
+		sourceLineageTag: parent_job_id
+		summarizeBy: none
+		sourceColumn: parent_job_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Job Name'
+		dataType: string
+		sourceProviderType: varchar(8000)
+		lineageTag: 8107aedb-1752-47a5-b428-cba590b5d890
+		sourceLineageTag: job_name
+		summarizeBy: none
+		sourceColumn: job_name
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Job Category'
+		dataType: string
+		sourceProviderType: varchar(8000)
+		lineageTag: 84461283-2e9b-4cdd-b8cb-6f16e71dc6a9
+		sourceLineageTag: job_category
+		summarizeBy: none
+		sourceColumn: job_category
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Start Time'
+		dataType: dateTime
+		formatString: General Date
+		sourceProviderType: datetime2
+		lineageTag: 8b8e69d4-f190-4ff6-822b-b7692719be3c
+		sourceLineageTag: start_time
+		summarizeBy: none
+		sourceColumn: start_time
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'End Time'
+		dataType: dateTime
+		formatString: General Date
+		sourceProviderType: datetime2
+		lineageTag: 151e00b7-ce7b-4486-a4f6-991669692389
+		sourceLineageTag: end_time
+		summarizeBy: none
+		sourceColumn: end_time
+
+		annotation SummarizationSetBy = Automatic
+
+	column Status
+		dataType: string
+		sourceProviderType: varchar(8000)
+		lineageTag: 9f2bb6c9-cc6b-4d47-a693-60092d72b4a6
+		sourceLineageTag: status
+		summarizeBy: none
+		sourceColumn: status
+
+		annotation SummarizationSetBy = Automatic
+
+	column Message
+		dataType: string
+		sourceProviderType: varchar(8000)
+		lineageTag: ffad7719-1f16-495b-b5ea-83609067ec98
+		sourceLineageTag: message
+		summarizeBy: none
+		sourceColumn: message
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Job = entity
+		mode: directLake
+		source
+			entityName: t_job
+			schemaName: dbo
+			expressionSource: DatabaseQuery
+
+	annotation PBI_ResultType = Table
+

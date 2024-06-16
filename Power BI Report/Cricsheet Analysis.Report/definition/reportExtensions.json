@@ -1,0 +1,94 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/reportExtension/1.0.0/schema.json",
+  "name": "extension",
+  "entities": [
+    {
+      "name": "Team",
+      "measures": [
+        {
+          "name": "Slicer Filter",
+          "expression": "INT( NOT ISEMPTY( 'Team Players'))",
+          "dataType": "Double",
+          "formatString": "General Number"
+        }
+      ]
+    },
+    {
+      "name": "Deliveries",
+      "measures": [
+        {
+          "name": "Test - 1",
+          "expression": "\n[Cumulative Wickets Score] - 1",
+          "dataType": "Double",
+          "hidden": true,
+          "references": {
+            "measures": [
+              {
+                "schema": "",
+                "entity": "Deliveries",
+                "name": "Cumulative Wickets Score"
+              }
+            ]
+          },
+          "formatString": "General Number"
+        },
+        {
+          "name": "Test + 1",
+          "expression": "\n[Cumulative Wickets Score] + 1",
+          "dataType": "Double",
+          "hidden": true,
+          "references": {
+            "measures": [
+              {
+                "schema": "",
+                "entity": "Deliveries",
+                "name": "Cumulative Wickets Score"
+              }
+            ]
+          },
+          "formatString": "General Number"
+        },
+        {
+          "name": "Max Overs",
+          "expression": "\nMAX ( Deliveries[overs] )",
+          "dataType": "Double",
+          "hidden": true,
+          "formatString": "General Number"
+        },
+        {
+          "name": "Innings Color",
+          "expression": "\nSWITCH (\n    SELECTEDVALUE ( Deliveries[innings] ),\n    1, \"#41A4FF\",\n    2, \"#12239E\",\n    3, \"#A666B0\",\n    4, \"#E8D166\",\n    5, \"#744EC2\",\n    6, \"#6B007B\"\n)",
+          "dataType": "Text",
+          "hidden": true,
+          "formatString": "General Number"
+        }
+      ]
+    },
+    {
+      "name": "Match",
+      "measures": [
+        {
+          "name": "Event Details Card",
+          "expression": "\nMAX ( Match[Event Name] ) & \", \"\n    & MAX ( Match[Season] )",
+          "dataType": "Text",
+          "formatString": "General Number"
+        },
+        {
+          "name": "Venue Details Card",
+          "expression": "\nMAX ( Match[Venue] ) & \", \"\n    & FORMAT ( [Last Played Date], \"dd-MMM-yyyy\" )",
+          "dataType": "Text",
+          "references": {
+            "measures": [
+              {
+                "schema": "",
+                "entity": "Deliveries",
+                "name": "Last Played Date"
+              }
+            ]
+          },
+          "formatString": "General Number"
+        }
+      ]
+    }
+  ]
+}

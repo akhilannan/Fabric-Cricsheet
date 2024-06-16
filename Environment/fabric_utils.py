@@ -1216,6 +1216,12 @@ def update_model_expression(dataset_name: str, lakehouse_name: str, workspace_id
 def encode_to_base64(file):
     return base64.b64encode(json.dumps(file).encode('utf-8')).decode('utf-8')
 
+# # Get file content as base64
+def get_file_content_as_base64(file_path):
+    """Reads a file and returns its content encoded in Base64."""
+    with open(file_path, 'rb') as file:
+        return base64.b64encode(file.read()).decode('utf-8')
+
 
 # # Decode Base64 encoded data to JSON format
 def decode_from_base64(encoded_data):
@@ -1241,6 +1247,34 @@ def check_operation_status(operation_id, client=fabric.FabricRestClient()):
         operation_response = client.get(f"/v1/operations/{operation_id}").json()
     print('Operation succeeded')
 
+
+# # Create or Replace Semantic Model
+def create_or_replace_semantic_model(model_path: str, workspace_id=fabric.get_workspace_id()) -> None:
+    """
+    Create or replace a Power BI semantic model from a given path.
+
+    Args:
+        model_path (str): The path to the folder containing the semantic model.
+        workspace_id (str): The ID of the workspace to which the semantic model will be deployed. If not provided, defaults to the current workspace ID.
+
+    Raises:
+        ValueError: If the model_path is invalid.
+        Exception: For any other exceptions that might occur during the process.
+    """
+    # Validate input parameters
+    if not os.path.isdir(model_path):
+        raise ValueError(f"The model path '{model_path}' does not exist or is not a directory.")
+
+    try:
+        # Prepare the request body based on the model path
+        request_body = create_powerbi_item_request_body(model_path)
+
+        # Call the function to create or replace the fabric item in the workspace
+        create_or_replace_fabric_item(request_body, workspace_id)
+
+    except Exception as e:
+        raise Exception(f"An error occurred while creating or replacing the semantic model: {str(e)}")
+    
 
 # # Create or Replace Semantic Model from bim
 def create_or_replace_semantic_model_from_bim(dataset_name, bim_file_json, workspace_id=fabric.get_workspace_id()):
@@ -1286,8 +1320,99 @@ def create_or_replace_semantic_model_from_bim(dataset_name, bim_file_json, works
     }
 
     # Call the function to create or replace the fabric item
-    create_or_replace_fabric_item(dataset_name, object_type, request_body, workspace_id)
+    create_or_replace_fabric_item(request_body, workspace_id)
 
+
+def update_definition_pbir(folder_path: str, dataset_id: str) -> None:
+    """
+    Update the 'definition.pbir' file in the specified folder with new dataset details.
+    
+    Args:
+        folder_path (str): The path to the folder containing the 'definition.pbir' file.
+        dataset_id (str): The new dataset ID to be used in the 'definition.pbir' file.
+    
+    Raises:
+        FileNotFoundError: If the 'definition.pbir' file does not exist.
+        ValueError: If the folder_path or dataset_id is invalid.
+        json.JSONDecodeError: If the file content is not valid JSON.
+        Exception: For any other exceptions that might occur.
+    """
+    # Validate input parameters
+    if not os.path.isdir(folder_path):
+        raise ValueError(f"The folder path '{folder_path}' does not exist or is not a directory.")
+    if not isinstance(dataset_id, str) or not dataset_id.strip():
+        raise ValueError("The dataset_id must be a non-empty string.")
+    
+    # Define the file path
+    file_path = os.path.join(folder_path, 'definition.pbir')
+    
+    # Check if the file exists
+    if not os.path.isfile(file_path):
+        raise FileNotFoundError(f"The file '{file_path}' does not exist.")
+    
+    try:
+        # Read the existing content of the file
+        with open(file_path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        
+        # Update the content
+        data['datasetReference']['byPath'] = None
+        data['datasetReference']['byConnection'] = {
+            "connectionString": None,
+            "pbiServiceModelId": None,
+            "pbiModelVirtualServerName": "sobe_wowvirtualserver",
+            "pbiModelDatabaseName": dataset_id,
+            "name": "EntityDataSource",
+            "connectionType": "pbiServiceXmlaStyleLive"
+        }
+        
+        # Write the updated content back to the file
+        with open(file_path, 'w', encoding='utf-8') as file:
+            json.dump(data, file, indent=4)
+        
+        print(f"File '{file_path}' updated successfully.")
+    
+    except json.JSONDecodeError as e:
+        raise json.JSONDecodeError(f"Error decoding JSON from the file '{file_path}': {str(e)}")
+    except Exception as e:
+        raise Exception(f"An error occurred while updating the file '{file_path}': {str(e)}")
+
+
+def create_or_replace_report_from_pbir(report_path: str, dataset_name: str, dataset_workspace_id=fabric.get_workspace_id(), report_workspace_id =fabric.get_workspace_id()) -> None:
+    """
+    Create or replace a Power BI report in service from PBIR and point it to a dataset
+
+    Args:
+        report_path (str): The path to the folder containing the 'definition.pbir' file.
+        dataset_name (str): The name of the dataset to be used in the report.
+        workspace_id (Optional[str]): The ID of the workspace. If not provided, defaults to the current workspace ID.
+
+    Raises:
+        ValueError: If the report_path or dataset_name is invalid.
+        Exception: For any other exceptions that might occur during the process.
+    """
+    # Validate input parameters
+    if not os.path.isdir(report_path):
+        raise ValueError(f"The report path '{report_path}' does not exist or is not a directory.")
+    if not isinstance(dataset_name, str) or not dataset_name.strip():
+        raise ValueError("The dataset_name must be a non-empty string.")
+
+    try:
+        # Extract the ID of the dataset
+        dataset_id = get_item_id(dataset_name, 'SemanticModel', dataset_workspace_id)
+
+        # Prepare the Power BI report definition
+        update_definition_pbir(report_path, dataset_id)
+
+        # Prepare the request body with the report name, type, and definition
+        request_body = create_powerbi_item_request_body(report_path)
+
+        # Call the function to create or replace the fabric item
+        create_or_replace_fabric_item(request_body, report_workspace_id)
+
+    except Exception as e:
+        raise Exception(f"An error occurred while creating or replacing the report: {str(e)}")
+    
 
 # # Create or replace report from report json
 def create_or_replace_report_from_reportjson(report_name, dataset_name, report_json, theme_json=None, workspace_id=fabric.get_workspace_id()):
@@ -1365,7 +1490,7 @@ def create_or_replace_report_from_reportjson(report_name, dataset_name, report_j
     }
 
     # Call the function to create or replace the fabric item
-    create_or_replace_fabric_item(report_name, object_type, request_body, workspace_id)
+    create_or_replace_fabric_item(request_body, workspace_id)
 
 
 # # Create or Replace Notebook
@@ -1441,11 +1566,85 @@ def create_or_replace_notebook_from_ipynb(notebook_name, notebook_json, default_
     }
 
     # Call the function to create or replace the notebook item in the Power BI workspace.
-    create_or_replace_fabric_item(notebook_name, object_type, request_body, workspace_id)
+    create_or_replace_fabric_item(request_body, workspace_id)
+
+
+# # Extract item name and type from path
+def extract_item_name_and_type_from_path(parent_folder_path):
+    """
+    Extracts item name and object type from the parent folder name.
+    The folder name should be in the format 'item_name.object_type'.
+    """
+    if not os.path.exists(parent_folder_path):
+        raise FileNotFoundError(f"The path '{parent_folder_path}' does not exist.")
+    
+    parent_folder_name = os.path.basename(parent_folder_path)
+    if '.' not in parent_folder_name:
+        raise ValueError("Expectation is to have the parent folder in the format 'item_name.object_type'")
+    
+    item_name, object_type = parent_folder_name.split('.', 1)
+    return item_name, object_type
+
+
+# # Create power bi item request body
+def create_powerbi_item_request_body(parent_folder_path):
+    """Creates the request body for a Power BI item with Base64 encoded file contents."""
+    try:
+        item_name, object_type = extract_item_name_and_type_from_path(parent_folder_path)
+    except (FileNotFoundError, ValueError) as e:
+        raise e
+
+    request_body = {
+        "displayName": item_name,
+        "type": object_type,
+        "definition": {
+            "parts": []
+        }
+    }
+
+    # Check for 'definition.*' file immediately inside the parent folder
+    for file_name in os.listdir(parent_folder_path):
+        if file_name.startswith('definition.') and len(file_name) > 11:
+            definition_file_path = os.path.join(parent_folder_path, file_name)
+            if os.path.isfile(definition_file_path):
+                encoded_content = get_file_content_as_base64(definition_file_path)
+                request_body["definition"]["parts"].append({
+                    "path": file_name,
+                    "payload": encoded_content,
+                    "payloadType": "InlineBase64"
+                })
+
+    # Traverse through the parent folder and its subfolders
+    for root, dirs, files in os.walk(parent_folder_path):
+        # Filter subfolders to process
+        relative_root = os.path.relpath(root, parent_folder_path)
+        if not any(relative_root.startswith(prefix) for prefix in ('StaticResources', 'definition')):
+            continue
+
+        for file_name in files:
+            # Exclude specific file patterns
+            if file_name.endswith('.abf') or (file_name.startswith('item.') and file_name.endswith('.json')):
+                continue
+
+            # Construct the relative path excluding the parent folder
+            relative_path = os.path.relpath(os.path.join(root, file_name), parent_folder_path).replace(os.sep, '/')
+
+            # Get the base64 encoded content of the file
+            file_path = os.path.join(root, file_name)
+            encoded_content = get_file_content_as_base64(file_path)
+
+            # Add the file details to the parts list in the request body
+            request_body["definition"]["parts"].append({
+                "path": relative_path,
+                "payload": encoded_content,
+                "payloadType": "InlineBase64"
+            })
+
+    return request_body
 
 
 # # Create or Replace Fabric Item
-def create_or_replace_fabric_item(item_name, object_type, request_body, workspace_id=fabric.get_workspace_id()):
+def create_or_replace_fabric_item(request_body, workspace_id=fabric.get_workspace_id()):
     """
     Create or replace a fabric item within a given workspace.
 
@@ -1454,19 +1653,25 @@ def create_or_replace_fabric_item(item_name, object_type, request_body, workspac
 
     Parameters:
     - workspace_id (str): The ID of the workspace where the item is to be created or replaced.
-    - item_name (str): The name of the item to be created or replaced.
-    - object_type (str): The type of the item (e.g., 'dataset', 'report').
-    - request_body (dict): The definition of the item in JSON format.
+    - request_body (dict): The definition of the item in JSON format. Should contain "displayName" and "type".
 
     Returns:
     - None
     """
-
+    
+    # Extract item_name and object_type from request_body
+    item_name = request_body.get("displayName")
+    object_type = request_body.get("type")
+    
+    if not item_name or not object_type:
+        print("Error: 'displayName' and 'type' must be present in request_body.")
+        return
+    
     # Initialize the REST client for the fabric service
     client = fabric.FabricRestClient()
 
     # Retrieve existing items of the same name and type
-    df = get_fabric_items(item_name=item_name, item_type=object_type, workspace_id = workspace_id)
+    df = get_fabric_items(item_name=item_name, item_type=object_type, workspace_id=workspace_id)
 
     # If no existing item, create a new one
     if df.empty:
@@ -1489,8 +1694,8 @@ def create_or_replace_fabric_item(item_name, object_type, request_body, workspac
         # If status code indicates a pending operation, check its status
         try:
             check_operation_status(response.headers['x-ms-operation-id'], client)
-        except:
-            return response
+        except Exception as e:
+            print(f"Operation failed: {str(e)}")
     else:
         # If operation failed, print the status code
         print(f"Operation failed with status code: {status_code}")
@@ -1634,7 +1839,7 @@ def create_and_publish_spark_environment(environment_name, yml_path, py_path, wo
         'type': item_type
     }
     
-    create_or_replace_fabric_item(environment_name, item_type, request_body, workspace_id)
+    create_or_replace_fabric_item(request_body, workspace_id)
     print(upload_file_to_environment(environment_name, py_path, workspace_id))
     print(update_sparkcompute(environment_name, yml_path, workspace_id))
     print(publish_staging_environment(environment_name, workspace_id))

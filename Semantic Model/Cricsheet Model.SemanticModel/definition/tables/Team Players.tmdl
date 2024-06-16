@@ -1,0 +1,233 @@
+table 'Team Players'
+	lineageTag: e8305a30-4cd9-4ef2-a01e-5b2d59eb3914
+	sourceLineageTag: [dbo].[t_fact_team_players]
+
+	measure 'Match Result' =
+			
+			IF (
+			    NOT ISEMPTY ( 'Team Players' ),
+			    CALCULATE (
+			        VAR _MatchResult =
+			            MAX ( 'Match'[Match Result] )
+			        VAR _MatchWinner =
+			            CALCULATE (
+			                MAXX ( 'Team Players', RELATED ( 'Team'[Team] ) ),
+			                USERELATIONSHIP ( 'Team Players'[match_winner_id], 'Team'[team_id] )
+			            )
+			        VAR _MatchResultWinner =
+			            IF (
+			                NOT ISBLANK ( _MatchResult ) && NOT ISBLANK ( _MatchWinner ),
+			                " (" & _MatchWinner & " won)"
+			            )
+			        VAR _WonByRuns =
+			            MAX ( 'Match'[Match Won by Runs] )
+			        VAR _WonByWickets =
+			            MAX ( 'Match'[Match Won by Wickets] )
+			        VAR _WonByInnings =
+			            MAX ( 'Match'[Match Won by Innings] )
+			        VAR _WinMethod =
+			            MAX ( 'Match'[Match Result Method] )
+			        VAR _RunsOrWickets =
+			            IF ( ISBLANK ( _WonByRuns ), " wickets", " runs" )
+			        VAR _Result =
+			            _MatchWinner & " won by "
+			                & COALESCE ( _WonByRuns, _WonByWickets ) & _RunsOrWickets
+			                & IF ( NOT ISBLANK ( _WonByInnings ), " and " & _WonByInnings & " innings" )
+			        RETURN
+			            COALESCE ( _MatchResult & _MatchResultWinner, _Result )
+			                & IF ( NOT ISBLANK ( _WinMethod ), " (" & _WinMethod & ")" )
+			    )
+			)
+		isHidden
+		lineageTag: e2b4345d-0600-431a-ba4b-146f2e967839
+
+		changedProperty = IsHidden
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Teams Played' =
+			
+			CONCATENATEX (
+			    SUMMARIZE ( 'Team Players', 'Team'[Team] ),
+			    'Team'[Team],
+			    UNICHAR ( 10 ) & " vs "
+			        & UNICHAR ( 10 ),
+			    'Team'[Team]
+			)
+		isHidden
+		lineageTag: 1fa93af1-74a3-4be5-9154-208ec4467509
+
+		changedProperty = IsHidden
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Toss Result' =
+			
+			VAR _TossWinner =
+			    CALCULATE (
+			        MAXX ( 'Team Players', RELATED ( 'Team'[Team] ) ),
+			        USERELATIONSHIP ( 'Team Players'[toss_winner_id], 'Team'[team_id] )
+			    )
+			RETURN
+			    IF (
+			        NOT ISBLANK ( _TossWinner ),
+			        _TossWinner & " won the toss and elected to "
+			            & MAX ( Match[Toss Decision] )
+			    )
+		isHidden
+		lineageTag: b9b86330-0df5-4d80-b889-cbba7b01b553
+
+		changedProperty = IsHidden
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Man of the Match' =
+			
+			CALCULATE (
+			    MAXX ( 'Team Players', RELATED ( 'Player'[Player Name] ) ),
+			    USERELATIONSHIP ( 'Team Players'[player_of_match_id], Player[player_id] )
+			)
+		isHidden
+		lineageTag: b4cf0dfd-015d-44a4-89a3-3f0a95e536e1
+
+		changedProperty = IsHidden
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	measure 'Player Teams' =
+			
+			VAR _TeamsPlayed =
+			    ADDCOLUMNS ( SUMMARIZE ( 'Team Players', 'Team'[Team] ), "@Matches", [Match #] )
+			RETURN
+			    CONCATENATEX (
+			        _TeamsPlayed,
+			        'Team'[Team] & " (" & [@Matches] & ")",
+			        ", ",
+			        [@Matches], DESC
+			    )
+		isHidden
+		lineageTag: 66f98e49-2292-4c21-86ee-21441b779a5e
+
+		changedProperty = IsHidden
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["UNNECESSARY_MEASURES","INTEGER_FORMATTING"]}
+
+	column match_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: 39b4dd5e-b8ac-41a0-8d21-740c7c2d7600
+		sourceLineageTag: match_id
+		summarizeBy: none
+		sourceColumn: match_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column team_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: bigint
+		lineageTag: 2e7e5362-e4f2-4366-928f-f0d7a22a78fb
+		sourceLineageTag: team_id
+		summarizeBy: none
+		sourceColumn: team_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column player_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: bigint
+		lineageTag: f24f59ef-d8ab-45dc-80a1-0451713e11f7
+		sourceLineageTag: player_id
+		summarizeBy: none
+		sourceColumn: player_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column match_winner_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: bigint
+		lineageTag: 1f76300e-6af1-4075-84aa-c2d4f4f9f59b
+		sourceLineageTag: match_winner_id
+		summarizeBy: none
+		sourceColumn: match_winner_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column player_of_match_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: bigint
+		lineageTag: cff41bed-de62-4a77-83a1-45273d093ea9
+		sourceLineageTag: player_of_match_id
+		summarizeBy: none
+		sourceColumn: player_of_match_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column toss_winner_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: bigint
+		lineageTag: fce8bfe5-372f-4446-a594-410e1cfc5b81
+		sourceLineageTag: toss_winner_id
+		summarizeBy: none
+		sourceColumn: toss_winner_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column first_bat_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: bigint
+		lineageTag: 284e45f1-7c97-4af5-9d2f-a84837007a65
+		sourceLineageTag: first_bat_id
+		summarizeBy: none
+		sourceColumn: first_bat_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column first_field_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: bigint
+		lineageTag: 7e61578f-85d8-4ffe-b8bd-d4d0129fee40
+		sourceLineageTag: first_field_id
+		summarizeBy: none
+		sourceColumn: first_field_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column match_date
+		dataType: dateTime
+		isHidden
+		formatString: dd-MMM-yyyy
+		sourceProviderType: date
+		lineageTag: 0e91285a-8a2e-4823-b4b7-330dea4ca71b
+		sourceLineageTag: match_date
+		summarizeBy: none
+		sourceColumn: match_date
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["RELATIONSHIP_COLUMNS_SHOULD_BE_OF_INTEGER_DATA_TYPE","DATECOLUMN_FORMATSTRING"]}
+
+	partition 'Team Players' = entity
+		mode: directLake
+		source
+			entityName: t_fact_team_players
+			schemaName: dbo
+			expressionSource: DatabaseQuery
+
+	annotation IsTableInBiModel = True
+

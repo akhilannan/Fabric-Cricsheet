@@ -1,0 +1,90 @@
+relationship f36bd119-e510-5cda-3f62-92006c4d3bac
+	fromColumn: 'Team Players'.team_id
+	toColumn: Team.team_id
+
+relationship 5fbb0ef7-b010-73aa-79e7-92b79d6cb1f1
+	fromColumn: 'Team Players'.player_id
+	toColumn: Player.player_id
+
+relationship e970f436-4cb7-e1aa-ccd7-50530bfb8009
+	fromColumn: 'Team Players'.match_id
+	toColumn: Match.match_id
+
+relationship 93d2718e-d03c-37f2-8af4-491f4003d3ed
+	fromColumn: Deliveries.match_id
+	toColumn: Match.match_id
+
+relationship 168fb4c0-56e3-44df-9ca7-b6992a29dd7a
+	fromColumn: Deliveries.batter_id
+	toColumn: Player.player_id
+
+relationship 724bc175-db19-481e-b332-89b9d8301461
+	isActive: false
+	fromColumn: Deliveries.bowler_id
+	toColumn: Player.player_id
+
+relationship c3f0bcfc-f403-46b1-b0a0-53aa1f91686d
+	isActive: false
+	fromColumn: Deliveries.fielder_id
+	toColumn: Player.player_id
+
+	annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["INACTIVE_RELATIONSHIPS_THAT_ARE_NEVER_ACTIVATED"]}
+
+relationship d0dfa01c-ce9e-42fa-bc0d-839e6ebb5a5f
+	isActive: false
+	fromColumn: Deliveries.non_striker_id
+	toColumn: Player.player_id
+
+relationship 23d28bae-0ea3-4d03-82c5-fd51b07dd261
+	isActive: false
+	fromColumn: Deliveries.player_out_id
+	toColumn: Player.player_id
+
+relationship 8b36b6e9-86f4-4924-838c-992c5628076a
+	fromColumn: Deliveries.batting_team_id
+	toColumn: Team.team_id
+
+relationship 5b90c227-27fb-433e-b96d-7103a15adbe9
+	fromColumn: Deliveries.match_date
+	toColumn: Date.Date
+
+relationship 0fba8210-5ea8-443f-99bc-3399ef17ba13
+	fromColumn: 'Team Players'.match_date
+	toColumn: Date.Date
+
+relationship c75d4d87-ced3-48dd-96dc-8ffb50f76b97
+	isActive: false
+	fromColumn: 'Team Players'.first_bat_id
+	toColumn: Team.team_id
+
+	annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["INACTIVE_RELATIONSHIPS_THAT_ARE_NEVER_ACTIVATED"]}
+
+relationship 794dc3c7-035c-40b7-98e0-1c6b94180555
+	isActive: false
+	fromColumn: 'Team Players'.first_field_id
+	toColumn: Team.team_id
+
+	annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["INACTIVE_RELATIONSHIPS_THAT_ARE_NEVER_ACTIVATED"]}
+
+relationship 319f625f-82d3-47b5-9c7e-492de593f1eb
+	isActive: false
+	fromColumn: 'Team Players'.match_winner_id
+	toColumn: Team.team_id
+
+relationship 3659c662-ccb8-4d51-8f47-c4e64455fa76
+	isActive: false
+	fromColumn: 'Team Players'.player_of_match_id
+	toColumn: Player.player_id
+
+relationship 03412e1e-4cc5-421e-8922-e9c1a994d840
+	isActive: false
+	fromColumn: 'Team Players'.toss_winner_id
+	toColumn: Team.team_id
+
+relationship b7bd6c12-cce0-4671-b2aa-89130095d92e
+	isActive: false
+	fromColumn: Deliveries.bowling_team_id
+	toColumn: Team.team_id
+
+	annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["INACTIVE_RELATIONSHIPS_THAT_ARE_NEVER_ACTIVATED"]}
+

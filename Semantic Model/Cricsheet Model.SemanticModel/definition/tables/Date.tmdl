@@ -1,0 +1,74 @@
+table Date
+	lineageTag: 380d78ee-680d-4ef0-9562-7fcb2b739ad2
+	sourceLineageTag: [dbo].[t_dim_date]
+	dataCategory: Time
+
+	column Date
+		dataType: dateTime
+		isKey
+		formatString: dd-MMM-yyyy
+		sourceProviderType: date
+		lineageTag: 3d97ba49-83cc-4a99-8883-598ebb761429
+		sourceLineageTag: date
+		summarizeBy: none
+		sourceColumn: date
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation TabularEditor_MarkAsDateKey = 1
+
+		annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["RELATIONSHIP_COLUMNS_SHOULD_BE_OF_INTEGER_DATA_TYPE","DATECOLUMN_FORMATSTRING"]}
+
+	column Year
+		dataType: int64
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: 6f88741f-c450-4f03-84e0-c8784f18968f
+		sourceLineageTag: year
+		summarizeBy: none
+		sourceColumn: year
+
+		annotation SummarizationSetBy = Automatic
+
+	column Quarter
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: c6accae7-0907-469e-ad73-e9458355be8b
+		sourceLineageTag: quarter
+		summarizeBy: none
+		sourceColumn: quarter
+
+		annotation SummarizationSetBy = Automatic
+
+	column month_number
+		dataType: int64
+		isHidden
+		formatString: 0
+		sourceProviderType: int
+		lineageTag: 48b322ee-97bb-4718-809b-0f220270ab65
+		sourceLineageTag: month_number
+		summarizeBy: sum
+		sourceColumn: month_number
+
+		annotation SummarizationSetBy = Automatic
+
+	column Month
+		dataType: string
+		sourceProviderType: varchar
+		lineageTag: 363a548f-b992-4703-86e6-b0bf737f6018
+		sourceLineageTag: month
+		summarizeBy: none
+		sourceColumn: month
+		sortByColumn: month_number
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Date = entity
+		mode: directLake
+		source
+			entityName: t_dim_date
+			schemaName: dbo
+			expressionSource: DatabaseQuery
+
+	annotation IsTableInBiModel = True
+

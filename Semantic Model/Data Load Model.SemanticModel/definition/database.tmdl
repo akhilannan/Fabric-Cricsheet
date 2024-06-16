@@ -1,0 +1,5 @@
+database 'Data Load Model'
+	id: bd359993-dd7c-4502-8eff-bc65baa0635f
+	compatibilityLevel: 1605
+	compatibilityMode: powerBI
+

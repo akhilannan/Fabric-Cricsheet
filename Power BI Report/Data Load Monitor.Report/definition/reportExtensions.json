@@ -1,0 +1,62 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/reportExtension/1.0.0/schema.json",
+  "name": "extension",
+  "entities": [
+    {
+      "name": "Job",
+      "measures": [
+        {
+          "name": "Overall Duration",
+          "expression": "\nCALCULATE ( [Time Elapsed], KEEPFILTERS ( ISBLANK ( Job[Parent Job ID] ) ) )",
+          "dataType": "Double",
+          "references": {
+            "measures": [
+              {
+                "schema": "",
+                "entity": "Job",
+                "name": "Time Elapsed"
+              }
+            ]
+          },
+          "formatString": "General Number"
+        },
+        {
+          "name": "Overall Job #",
+          "expression": "\nCALCULATE ( [Job #], KEEPFILTERS ( NOT ISBLANK ( Job[Parent Job ID] ) ) )",
+          "dataType": "Double",
+          "references": {
+            "measures": [
+              {
+                "schema": "",
+                "entity": "Job",
+                "name": "Job #"
+              }
+            ]
+          },
+          "formatString": "General Number"
+        },
+        {
+          "name": "Current Status",
+          "expression": "SELECTEDVALUE(Job[Status])",
+          "dataType": "Text",
+          "formatString": "General Number"
+        },
+        {
+          "name": "Duration excl Parent",
+          "expression": "\nCALCULATE (\n    [Duration, sec],\n    KEEPFILTERS ( Job[Job Category] <> \"Orchestrator\" )\n)",
+          "dataType": "Double",
+          "references": {
+            "measures": [
+              {
+                "schema": "",
+                "entity": "Job",
+                "name": "Duration, sec"
+              }
+            ]
+          },
+          "formatString": "General Number"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/1.0.0/schema.json",
+  "name": "ReportSection",
+  "displayName": "Data Load Monitor",
+  "displayOption": "ActualSize",
+  "height": 720,
+  "width": 1280,
+  "objects": {
+    "pageRefresh": [
+      {
+        "properties": {
+          "show": {
+            "expr": {
+              "Literal": {
+                "Value": "true"
+              }
+            }
+          },
+          "duration": {
+            "expr": {
+              "Literal": {
+                "Value": "'PT30S'"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "background": [
+      {
+        "properties": {
+          "color": {
+            "solid": {
+              "color": {
+                "expr": {
+                  "Literal": {
+                    "Value": "'#F0F0F0'"
+                  }
+                }
+              }
+            }
+          },
+          "transparency": {
+            "expr": {
+              "Literal": {
+                "Value": "0D"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "visualInteractions": [
+    {
+      "source": "34acfc8fb696737e0076",
+      "target": "c6abce026b742e06561b",
+      "type": "NoFilter"
+    },
+    {
+      "source": "34acfc8fb696737e0076",
+      "target": "38eb50d5250ce106b764",
+      "type": "NoFilter"
+    },
+    {
+      "source": "34acfc8fb696737e0076",
+      "target": "75c50e3259730dc0103d",
+      "type": "NoFilter"
+    }
+  ]
+}

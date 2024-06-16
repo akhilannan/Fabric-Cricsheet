@@ -1,0 +1,37 @@
+table 'Latest Parent'
+	lineageTag: ac2808e6-1ddd-4e73-8771-27d410b66f7f
+
+	calculationGroup
+
+		calculationItem Yes =
+				
+				VAR _LatestParent =
+				    CALCULATETABLE (
+				        VAR _ParentJobs =
+				            CALCULATETABLE (
+				                VALUES ( 'Job'[Parent Job ID] ),
+				                NOT ISBLANK ( 'Job'[Parent Job ID] )
+				            )
+				        VAR _LatestDateParent =
+				            CALCULATETABLE (
+				                LASTNONBLANK ( 'Job'[Start Time], 0 ),
+				                TREATAS ( _ParentJobs, 'Job'[Job ID] )
+				            )
+				        VAR _LatestParentJob =
+				            CALCULATETABLE ( VALUES ( 'Job'[Job ID] ), _LatestDateParent )
+				        VAR _JobsWithLatestParent =
+				            CALCULATETABLE (
+				                VALUES ( 'Job'[Job ID] ),
+				                TREATAS ( _LatestParentJob, 'Job'[Parent Job ID] )
+				            )
+				        RETURN
+				            UNION ( _LatestParentJob, _JobsWithLatestParent ),
+				        REMOVEFILTERS ()
+				    )
+				RETURN
+				    CALCULATE ( SELECTEDMEASURE (), KEEPFILTERS ( _LatestParent ) )
+
+	column 'Is Latest Parent Job'
+		dataType: string
+		sourceColumn: Name
+
