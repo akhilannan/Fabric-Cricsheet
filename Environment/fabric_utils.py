@@ -1688,9 +1688,9 @@ def create_or_replace_fabric_item(request_body, workspace_id=fabric.get_workspac
 
     # Check the response status code to determine the outcome
     status_code = response.status_code
-    if status_code == 200:
+    if status_code in (200, 201):
         print("Operation succeeded")
-    elif status_code in (201, 202):
+    elif status_code == 202:
         # If status code indicates a pending operation, check its status
         try:
             check_operation_status(response.headers['x-ms-operation-id'], client)
