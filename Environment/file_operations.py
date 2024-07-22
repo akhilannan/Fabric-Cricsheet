@@ -11,65 +11,75 @@ from sempy import fabric
 from fabric_utils import get_lakehouse_path
 
 
-def unzip_files(zip_filename: str, filenames: list[str] = None, path: str = None) -> None:
+def unzip_files(zip_full_path: str, filenames: list[str] = None, extract_full_path: str = None) -> None:
     """Unzip a batch of files from a zip file to a given path or the entire zip file if no filenames are provided.
 
     Args:
-        zip_filename (str): The name of the zip file with its path.
+        zip_full_path (str): The full path of the zip file.
         filenames (list[str], optional): The list of filenames to unzip. Defaults to None.
-        path (str, optional): The destination path for the unzipped files. Defaults to None.
+        extract_full_path (str, optional): The destination path for the unzipped files. Defaults to None.
     """
-    # If no path is provided, extract to the same directory as the zip file
-    if path is None:
-        path = os.path.dirname(zip_filename)
+    # If no extract_full_path is provided, extract to the same directory as the zip file
+    if extract_full_path is None:
+        extract_full_path = os.path.dirname(zip_full_path)
+    
+    # Ensure the destination directory exists
+    os.makedirs(extract_full_path, exist_ok=True)
         
     # Open the zip file
-    with ZipFile(zip_filename, 'r') as handle:
+    with ZipFile(zip_full_path, 'r') as handle:
         # If no filenames are provided, extract the entire zip file
         if filenames is None:
-            handle.extractall(path=path)
+            handle.extractall(path=extract_full_path)
         else:
-            handle.extractall(path=path, members=filenames)
+            handle.extractall(path=extract_full_path, members=filenames)
 
 
-def unzip_parallel(lakehouse: str, path: str, filename: str, file_type: str = None) -> None:
+def unzip_parallel(lakehouse: str, zip_relative_path: str, extract_relative_path: str = None, file_type: str = None) -> None:
     """Unzip all files from a zip file to a given path in parallel.
 
     Args:
         lakehouse (str): Name of the Lakehouse
-        path (str): The destination path for the unzipped files.
-        filename (str): The name of the zip file without the path.
-        file_type (str): The file type to extract. Defaults to None.
+        zip_relative_path (str): The relative path of the zip file.
+        extract_relative_path (str, optional): The relative path for the destination of the unzipped files. Defaults to None.
+        file_type (str, optional): The file type to extract. Defaults to None.
     """
-    # Create a lake path
-    lake_path = os.path.join(get_lakehouse_path(lakehouse, "local", "Files"), path)
-    # join the path and the filename to get the full zip file path
-    zip_filename = os.path.join(lake_path, filename)
+    # Base path using get_lakehouse_path
+    base_path = get_lakehouse_path(lakehouse, "local", "Files")
     
-    # check if the zip file exists
-    if not os.path.exists(zip_filename):
-        print(f"The zip file {zip_filename} does not exist.")
+    # Full path to the zip file
+    zip_full_path = os.path.join(base_path, zip_relative_path)
+    
+    # Check if the zip file exists
+    if not os.path.exists(zip_full_path):
+        print(f"The zip file {zip_full_path} does not exist.")
         return
 
+    # Determine the extraction path
+    if extract_relative_path is None:
+        extract_full_path = os.path.dirname(zip_full_path)
+    else:
+        extract_full_path = os.path.join(base_path, extract_relative_path)
+    
     try:
-        # open the zip file
-        with ZipFile(zip_filename, 'r') as handle:
-            # list of all files to unzip
+        # Open the zip file
+        with ZipFile(zip_full_path, 'r') as handle:
+            # List of all files to unzip
             files = handle.namelist()
         
-        # filter the files by file type if not None
+        # Filter the files by file type if not None
         if file_type is not None:
             files = [f for f in files if f.endswith(file_type)]
         
         n_workers = min(os.cpu_count() * 4, len(files))  # Determine the number of workers based on CPU count and number of files
-        chunksize = max(1, len(files) // n_workers) # determine chunksize
+        chunksize = max(1, len(files) // n_workers) # Determine chunksize
 
         # Use ThreadPoolExecutor to unzip files in parallel
         with ThreadPoolExecutor(n_workers) as executor:
             futures = []
             for i in range(0, len(files), chunksize):
                 filenames = files[i:i + chunksize]
-                futures.append(executor.submit(unzip_files, zip_filename, filenames, lake_path))
+                futures.append(executor.submit(unzip_files, zip_full_path, filenames, extract_full_path))
             
             # Wait for all futures to complete            
             for future in as_completed(futures):
@@ -78,7 +88,7 @@ def unzip_parallel(lakehouse: str, path: str, filename: str, file_type: str = No
                 except Exception as e:
                     print(f"Error extracting files: {e}")
         
-        print(f"Successfully extracted files from {zip_filename}")
+        print(f"Successfully extracted files from {zip_full_path} to {extract_full_path}")
 
     except Exception as e:
         print(f"An error occurred: {e}")
