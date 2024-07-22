@@ -18,7 +18,3 @@ To set up Fabric-Cricsheet, follow these steps:
 4. The execution will create several new Fabric items in the Cricsheet workspace. It will also start the data load process.
 5. To view the live data load statistics, open the "Data Load Monitor" report in Cricsheet workspace. Alternatively, you can access the 'lh_bronze' SQL Analytics endpoint and execute the 'job_details.sql' script located in the 'Sql' folder of the repository.
 6. Once Data Load is complete, open the "Cricsheet Analysis" Power BI report from Cricsheet Workspace to verify data retrieval.
-
-## Technical Archtecture
-
-TODO

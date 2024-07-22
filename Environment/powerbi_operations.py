@@ -1,0 +1,595 @@
+import datetime
+import json
+import os
+import time
+
+import pandas as pd
+
+from sempy import fabric
+from sempy.fabric.exceptions import FabricHTTPException
+
+from fabric_utils import (get_lakehouse_id, create_or_replace_fabric_item, get_item_id,
+                          extract_item_name_and_type_from_path, is_dataset_exists, get_fabric_items)
+from file_operations import encode_to_base64, get_file_content_as_base64
+
+
+def get_server_db(lakehouse_name: str, workspace_id: str = fabric.get_workspace_id()) -> tuple:
+    """
+    Retrieves the server and database details for a given lakehouse.
+
+    Args:
+        lakehouse_name (str): The name of the lakehouse.
+        workspace_id (str, optional): The workspace ID. Defaults to Current workspace id.
+
+    Returns:
+        tuple: A tuple containing the SQL Analytics server connection string and database ID.
+    """
+    client = fabric.FabricRestClient()
+    lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id)
+    response = client.get(f"/v1/workspaces/{workspace_id}/lakehouses/{lakehouse_id}")
+    
+    if response.status_code == 200:
+        response_json = response.json()
+        sql_end_point = response_json['properties']['sqlEndpointProperties']
+        server = sql_end_point['connectionString']
+        db = sql_end_point['id']
+        return server, db
+    else:
+        raise Exception(f"Failed to get lakehouse details: {response.status_code}")
+
+
+def get_shared_expression(lakehouse_name: str, workspace_id: str = fabric.get_workspace_id()) -> str:
+    """
+    This function generates the shared expression statement for a given lakehouse and its SQL endpoint.
+
+    Args:
+        lakehouse_name (str): An optional parameter to set the lakehouse. This defaults to the lakehouse attached to the notebook.        
+        workspace_id (str, optional): An optional parameter to set the workspace in which the lakehouse resides. This defaults to the workspace in which the notebook resides.
+
+    Returns:
+        This function returns an M statement which can be used as the expression in the shared expression for a Direct Lake semantic model.
+    """
+    server, db = get_server_db(lakehouse_name, workspace_id)
+    m_statement = 'let\n\tdatabase = Sql.Database("' + server + '", "' + db + '")\nin\n\tdatabase'
+    return m_statement
+
+
+def update_model_expression(dataset_name: str, lakehouse_name: str, workspace_id: str=fabric.get_workspace_id()) -> None:
+    """
+    Update the expression in the semantic model to point to the specified lakehouse.
+
+    Args:
+    - dataset_name (str): The name of the dataset.
+    - lakehouse_name (str): The name of the lakehouse.
+    - workspace_id (str, optional): An optional parameter to set the workspace in which the lakehouse resides. This defaults to the workspace in which the notebook resides.
+    """
+    tom_server = fabric.create_tom_server(readonly=False, workspace=workspace_id)
+    tom_database = tom_server.Databases.GetByName(dataset_name)
+    shared_expression = get_shared_expression(lakehouse_name, workspace_id)
+    try:
+        model = tom_database.Model
+        model.Expressions['DatabaseQuery'].Expression = shared_expression
+        model.SaveChanges()
+        print(f"The expression in the '{dataset_name}' semantic model has been updated to point to the '{lakehouse_name}' lakehouse.")
+    except Exception as e:
+        print(f"ERROR: The expression in the '{dataset_name}' semantic model was not updated. Error: {e}")
+
+
+def update_definition_pbir(folder_path: str, dataset_id: str) -> None:
+    """
+    Update the 'definition.pbir' file in the specified folder with new dataset details.
+    
+    Args:
+        folder_path (str): The path to the folder containing the 'definition.pbir' file.
+        dataset_id (str): The new dataset ID to be used in the 'definition.pbir' file.
+    
+    Raises:
+        FileNotFoundError: If the 'definition.pbir' file does not exist.
+        ValueError: If the folder_path or dataset_id is invalid.
+        json.JSONDecodeError: If the file content is not valid JSON.
+        Exception: For any other exceptions that might occur.
+    """
+    # Validate input parameters
+    if not os.path.isdir(folder_path):
+        raise ValueError(f"The folder path '{folder_path}' does not exist or is not a directory.")
+    if not isinstance(dataset_id, str) or not dataset_id.strip():
+        raise ValueError("The dataset_id must be a non-empty string.")
+    
+    # Define the file path
+    file_path = os.path.join(folder_path, 'definition.pbir')
+    
+    # Check if the file exists
+    if not os.path.isfile(file_path):
+        raise FileNotFoundError(f"The file '{file_path}' does not exist.")
+    
+    try:
+        # Read the existing content of the file
+        with open(file_path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        
+        # Update the content
+        data['datasetReference']['byPath'] = None
+        data['datasetReference']['byConnection'] = {
+            "connectionString": None,
+            "pbiServiceModelId": None,
+            "pbiModelVirtualServerName": "sobe_wowvirtualserver",
+            "pbiModelDatabaseName": dataset_id,
+            "name": "EntityDataSource",
+            "connectionType": "pbiServiceXmlaStyleLive"
+        }
+        
+        # Write the updated content back to the file
+        with open(file_path, 'w', encoding='utf-8') as file:
+            json.dump(data, file, indent=4)
+        
+        print(f"File '{file_path}' updated successfully.")
+    
+    except json.JSONDecodeError as e:
+        raise json.JSONDecodeError(f"Error decoding JSON from the file '{file_path}': {str(e)}")
+    except Exception as e:
+        raise Exception(f"An error occurred while updating the file '{file_path}': {str(e)}")
+
+
+def create_or_replace_semantic_model(model_path: str, workspace_id=fabric.get_workspace_id()) -> None:
+    """
+    Create or replace a Power BI semantic model from a given path.
+
+    Args:
+        model_path (str): The path to the folder containing the semantic model.
+        workspace_id (str): The ID of the workspace to which the semantic model will be deployed. If not provided, defaults to the current workspace ID.
+
+    Raises:
+        ValueError: If the model_path is invalid.
+        Exception: For any other exceptions that might occur during the process.
+    """
+    if not os.path.isdir(model_path):
+        raise ValueError(f"The model path '{model_path}' does not exist or is not a directory.")
+    try:
+        request_body = create_powerbi_item_request_body(model_path)
+        create_or_replace_fabric_item(request_body, workspace_id)
+    except Exception as e:
+        raise Exception(f'An error occurred while creating or replacing the semantic model: {str(e)}')
+
+
+def create_or_replace_semantic_model(model_path: str, workspace_id=fabric.get_workspace_id()) -> None:
+    """
+    Create or replace a Power BI semantic model from a given path.
+
+    Args:
+        model_path (str): The path to the folder containing the semantic model.
+        workspace_id (str): The ID of the workspace to which the semantic model will be deployed. If not provided, defaults to the current workspace ID.
+
+    Raises:
+        ValueError: If the model_path is invalid.
+        Exception: For any other exceptions that might occur during the process.
+    """
+    # Validate input parameters
+    if not os.path.isdir(model_path):
+        raise ValueError(f"The model path '{model_path}' does not exist or is not a directory.")
+
+    try:
+        # Prepare the request body based on the model path
+        request_body = create_powerbi_item_request_body(model_path)
+
+        # Call the function to create or replace the fabric item in the workspace
+        create_or_replace_fabric_item(request_body, workspace_id)
+
+    except Exception as e:
+        raise Exception(f"An error occurred while creating or replacing the semantic model: {str(e)}")
+
+
+def create_or_replace_report_from_pbir(report_path: str, dataset_name: str, dataset_workspace_id=fabric.get_workspace_id(), report_workspace_id =fabric.get_workspace_id()) -> None:
+    """
+    Create or replace a Power BI report in service from PBIR and point it to a dataset
+
+    Args:
+        report_path (str): The path to the folder containing the 'definition.pbir' file.
+        dataset_name (str): The name of the dataset to be used in the report.
+        workspace_id (Optional[str]): The ID of the workspace. If not provided, defaults to the current workspace ID.
+
+    Raises:
+        ValueError: If the report_path or dataset_name is invalid.
+        Exception: For any other exceptions that might occur during the process.
+    """
+    # Validate input parameters
+    if not os.path.isdir(report_path):
+        raise ValueError(f"The report path '{report_path}' does not exist or is not a directory.")
+    if not isinstance(dataset_name, str) or not dataset_name.strip():
+        raise ValueError("The dataset_name must be a non-empty string.")
+
+    try:
+        # Extract the ID of the dataset
+        dataset_id = get_item_id(dataset_name, 'SemanticModel', dataset_workspace_id)
+
+        # Prepare the Power BI report definition
+        update_definition_pbir(report_path, dataset_id)
+
+        # Prepare the request body with the report name, type, and definition
+        request_body = create_powerbi_item_request_body(report_path)
+
+        # Call the function to create or replace the fabric item
+        create_or_replace_fabric_item(request_body, report_workspace_id)
+
+    except Exception as e:
+        raise Exception(f"An error occurred while creating or replacing the report: {str(e)}")
+
+
+def create_or_replace_report_from_reportjson(report_name, dataset_name, report_json, theme_json=None, workspace_id=fabric.get_workspace_id()):
+    """
+    Create or replace a report from a report JSON definition.
+
+    Args:
+        report_name (str): The name of the report.
+        dataset_name (str): The name of the dataset.
+        report_json (dict): The JSON definition of the report.
+        theme_json (dict, optional): The JSON definition of the theme. Defaults to None.
+        workspace_id (str, optional): An optional parameter to set the workspace in which the lakehouse resides. This defaults to the workspace in which the notebook resides.
+
+    Returns:
+        None
+    """
+
+    # Define the object type for the report
+    object_type = 'Report'
+
+    # Retrieve the semantic model associated with the dataset name
+    dataset_df = get_fabric_items(item_name=dataset_name, item_type='SemanticModel', workspace_id = workspace_id)
+    if dataset_df.empty:
+        print(f"ERROR: The '{dataset_name}' semantic model does not exist.")
+        return
+
+    # Extract the ID of the dataset
+    dataset_id = dataset_df['Id'].iloc[0]
+
+    # Prepare the Power BI report definition
+    pbir_def = {
+        "version": "1.0",
+        "datasetReference": {
+            "byPath": None,
+            "byConnection": {
+                "connectionString": None,
+                "pbiServiceModelId": None,
+                "pbiModelVirtualServerName": "sobe_wowvirtualserver",
+                "pbiModelDatabaseName": dataset_id,
+                "name": "EntityDataSource",
+                "connectionType": "pbiServiceXmlaStyleLive"
+            }
+        }
+    }
+
+    # Initialize the parts list with the report definition
+    parts = [
+        {
+            "path": "report.json",
+            "payload": encode_to_base64(report_json),
+            "payloadType": "InlineBase64"
+        },
+        {
+            "path": "definition.pbir",
+            "payload": encode_to_base64(pbir_def),
+            "payloadType": "InlineBase64"
+        }
+    ]
+
+    # If a theme is provided, add it to the parts list
+    if theme_json:
+        theme_id = theme_json['payload']['blob']['displayName']
+        theme_path = f'StaticResources/SharedResources/BaseThemes/{theme_id}.json'
+        parts.append({
+            "path": theme_path,
+            "payload": encode_to_base64(theme_json),
+            "payloadType": "InlineBase64"
+        })
+
+    # Prepare the request body with the report name, type, and definition
+    request_body = {
+        'displayName': report_name,
+        'type': object_type,
+        'definition': {"parts": parts}
+    }
+
+    # Call the function to create or replace the fabric item
+    create_or_replace_fabric_item(request_body, workspace_id)
+
+
+def create_powerbi_item_request_body(parent_folder_path):
+    """Creates the request body for a Power BI item with Base64 encoded file contents."""
+    try:
+        item_name, object_type = extract_item_name_and_type_from_path(parent_folder_path)
+    except (FileNotFoundError, ValueError) as e:
+        raise e
+
+    request_body = {
+        "displayName": item_name,
+        "type": object_type,
+        "definition": {
+            "parts": []
+        }
+    }
+
+    # Check for 'definition.*' file immediately inside the parent folder
+    for file_name in os.listdir(parent_folder_path):
+        if file_name.startswith('definition.') and len(file_name) > 11:
+            definition_file_path = os.path.join(parent_folder_path, file_name)
+            if os.path.isfile(definition_file_path):
+                encoded_content = get_file_content_as_base64(definition_file_path)
+                request_body["definition"]["parts"].append({
+                    "path": file_name,
+                    "payload": encoded_content,
+                    "payloadType": "InlineBase64"
+                })
+
+    # Traverse through the parent folder and its subfolders
+    for root, dirs, files in os.walk(parent_folder_path):
+        # Filter subfolders to process
+        relative_root = os.path.relpath(root, parent_folder_path)
+        if not any(relative_root.startswith(prefix) for prefix in ('StaticResources', 'definition')):
+            continue
+
+        for file_name in files:
+            # Exclude specific file patterns
+            if file_name.endswith('.abf') or (file_name.startswith('item.') and file_name.endswith('.json')):
+                continue
+
+            # Construct the relative path excluding the parent folder
+            relative_path = os.path.relpath(os.path.join(root, file_name), parent_folder_path).replace(os.sep, '/')
+
+            # Get the base64 encoded content of the file
+            file_path = os.path.join(root, file_name)
+            encoded_content = get_file_content_as_base64(file_path)
+
+            # Add the file details to the parts list in the request body
+            request_body["definition"]["parts"].append({
+                "path": relative_path,
+                "payload": encoded_content,
+                "payloadType": "InlineBase64"
+            })
+
+    return request_body
+
+
+def start_enhanced_refresh(
+    dataset_name: str,
+    workspace_name: str = fabric.get_workspace_id(),
+    refresh_objects: str = "All",
+    refresh_type: str = "full",
+    commit_mode: str = "transactional",
+    max_parallelism: int = 10,
+    retry_count: int = 0,
+    apply_refresh_policy: bool = False,
+    effective_date: datetime.date = datetime.date.today(),
+) -> str:
+    """Starts an enhanced refresh of a dataset.
+
+    Args:
+        dataset_name: The name of the dataset to refresh.
+        workspace_name: The name of the workspace where the dataset is located. Defaults to the current workspace.
+        refresh_objects: The objects to refresh in the dataset. Can be "All" or a list of object names. Defaults to "All".
+        refresh_type: The type of refresh to perform. Can be "full" or "incremental". Defaults to "full".
+        commit_mode: The commit mode to use for the refresh. Can be "transactional" or "streaming". Defaults to "transactional".
+        max_parallelism: The maximum number of parallel threads to use for the refresh. Defaults to 10.
+        retry_count: The number of times to retry the refresh in case of failure. Defaults to 0.
+        apply_refresh_policy: Whether to apply the refresh policy defined in the dataset. Defaults to False.
+        effective_date: The date to use for the refresh. Defaults to today.
+
+    Returns:
+        The refresh request id.
+
+    Raises:
+        FabricException: If the refresh fails or encounters an error.
+    """
+    objects_to_refresh = convert_to_json(refresh_objects)
+    return fabric.refresh_dataset(
+        workspace=workspace_name,
+        dataset=dataset_name,
+        objects=objects_to_refresh,
+        refresh_type=refresh_type,
+        max_parallelism=max_parallelism,
+        commit_mode=commit_mode,
+        retry_count=retry_count,
+        apply_refresh_policy=apply_refresh_policy,
+        effective_date=effective_date,
+    )
+
+
+def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, workspace_name: str = fabric.resolve_workspace_name(fabric.get_workspace_id())) -> pd.DataFrame:
+    """Get enhanced refresh details for a given dataset and refresh request ID.
+
+    Args:
+        dataset_name (str): The name of the dataset.
+        refresh_request_id (str): The ID of the refresh request.
+        workspace_name (str, optional): The name of the workspace. Defaults to name workspace where Notebook reside.
+
+    Returns:
+        pd.DataFrame: A dataframe with the refresh details, messages, and time taken in seconds.
+    """
+    # Get the refresh execution details from fabric
+    refresh_details = fabric.get_refresh_execution_details(workspace=workspace_name, dataset=dataset_name, refresh_request_id=refresh_request_id)
+    
+    # Create a dataframe with the refresh details
+    df = pd.DataFrame({
+        'workspace': [workspace_name],
+        'dataset': [dataset_name],
+        'start_time': [refresh_details.start_time],
+        'end_time': [refresh_details.end_time if refresh_details.end_time is not None else None],
+        'status': [refresh_details.status],
+        'extended_status': [refresh_details.extended_status],
+        'number_of_attempts': [refresh_details.number_of_attempts]
+    })
+
+    # Calculate the time taken in seconds and add it as a new column
+    df['duration_in_sec'] = (df['end_time'].fillna(df['start_time']) - df['start_time']).dt.total_seconds()
+    df['duration_in_sec'] = df['duration_in_sec'].astype(int)
+    
+    # Convert the start_time and end_time columns to strings with the date format
+    df['start_time'] = df['start_time'].astype(str).str.slice(0, 16)
+    df['end_time'] = df['end_time'].astype(str).str.slice(0, 16)
+    
+    # Create a dataframe with the refresh messages
+    df_msg = pd.DataFrame(refresh_details.messages)
+    
+    # Add the dataset column to df_msg
+    df_msg = df_msg.assign(dataset=dataset_name)
+    
+    # Merge the dataframes on the dataset column and return the result
+    return df.merge(df_msg, how='outer', on='dataset')
+
+
+def cancel_enhanced_refresh(request_id: str, dataset_id: str, workspace_id: str = fabric.get_workspace_id()) -> dict:
+    """Cancel an enhanced refresh request for a Power BI dataset.
+
+    Args:
+        request_id (str): The ID of the refresh request to cancel.
+        dataset_id (str): The ID of the dataset to cancel the refresh for.
+        workspace_id (str, optional): The ID of the workspace containing the dataset. Defaults to the current workspace.
+
+    Returns:
+        dict: The JSON response from the Power BI REST API.
+
+    Raises:
+        FabricHTTPException: If the request fails with a non-200 status code.
+    """
+    
+    # Create a Power BI REST client object
+    client = fabric.PowerBIRestClient()
+
+    # Construct the endpoint URL for the delete request
+    endpoint = f"v1.0/myorg/groups/{workspace_id}/datasets/{dataset_id}/refreshes/{request_id}"
+
+    # Send the delete request and get the response
+    response = client.delete(endpoint)
+
+    # Check the status code and raise an exception if not 200
+    if response.status_code != 200:
+        raise FabricHTTPException(response)
+
+    # Return the JSON response as a dictionary
+    return response.json()
+
+
+def refresh_and_wait(
+    dataset_list: list[str],
+    workspace: str = fabric.get_workspace_id(),
+    logging_lakehouse: str = None,
+    parent_job_name: str = None,
+    job_category: str = "Adhoc",
+) -> None:
+    """
+    Waits for enhanced refresh of given datasets.
+
+    Args:
+      dataset_list: List of datasets to refresh.
+      workspace: The workspace ID where the datasets are located. Defaults to the current workspace.
+      logging_lakehouse: The name of the lakehouse where the job information will be logged. Defaults to None.
+      parent_job_name: The name of the parent job that triggered the refresh. Defaults to None.
+
+    Returns:
+      None
+
+    Raises:
+      Exception: If any of the datasets failed to refresh.
+    """
+    from job_operations import insert_or_update_job_table
+
+    # Filter out the datasets that do not exist
+    valid_datasets = [
+                dataset
+                for dataset in dataset_list
+                if is_dataset_exists(dataset, workspace)
+            ]
+
+    # Start the enhanced refresh for the valid datasets
+    request_ids = {
+        dataset: start_enhanced_refresh(dataset, workspace)
+        for dataset in valid_datasets
+    }
+
+    # Check if logging_lakehouse has value
+    if logging_lakehouse:
+        # Loop through the request_ids dictionary
+        for dataset, request_id in request_ids.items():
+            # Log entries in logging table
+            insert_or_update_job_table(
+                lakehouse_name=logging_lakehouse,
+                job_name=dataset,
+                parent_job_name=parent_job_name,
+                request_id=request_id,
+                job_category=job_category,
+            )
+
+    # Print the datasets that do not exist
+    invalid_datasets = set(dataset_list) - set(valid_datasets)
+    if invalid_datasets:
+        print(f"The following datasets do not exist: {', '.join(invalid_datasets)}")
+
+    # Loop until all the requests are completed
+    request_status_dict = {} # Initialize an empty dictionary to store the request status of each dataset
+    while True:
+        for dataset, request_id in request_ids.copy().items():
+            # Get the status and details of the current request
+            request_status_df = get_enhanced_refresh_details(dataset, request_id, workspace)
+            request_status = request_status_df["status"].iloc[0]
+
+            # If the request is not unknown, print the details, store the status in the dictionary, and remove it from the request_ids
+            if request_status != "Unknown":
+                if logging_lakehouse:
+                    duration = request_status_df["duration_in_sec"].iloc[0]
+                    msg = request_status_df["Message"].iloc[0]
+                    msg = None if pd.isna(msg) else msg
+                    insert_or_update_job_table(
+                        lakehouse_name=logging_lakehouse,
+                        job_name=dataset,
+                        parent_job_name=parent_job_name,
+                        request_id=request_id,
+                        status=request_status,
+                        duration=duration,
+                        job_category=job_category,
+                        message=msg,
+                    )
+                print(request_status_df)
+                request_status_dict[dataset] = request_status  # Store the status in the dictionary
+                del request_ids[dataset]
+
+        # If there are no more requests, exit the loop
+        if not request_ids:
+            # Check if any of the datasets failed to refresh
+            failed_datasets = [
+                dataset
+                for dataset, status in request_status_dict.items()
+                if status == "Failed"
+            ]
+            # If there are any failed datasets, raise an exception with the list of them
+            if failed_datasets:
+                raise Exception(f"The following datasets failed to refresh: {', '.join(failed_datasets)}")
+            break  # Exit the loop
+        # Otherwise, wait for 30 seconds before checking again
+        else:
+            time.sleep(30)
+
+
+def convert_to_json(refresh_objects: str) -> list:
+    """Converts a string of refresh objects to a list of dictionaries.
+
+    Args:
+        refresh_objects (str): A string of refresh objects, separated by "|".
+            Each refresh object consists of a table name and optional partitions, separated by ":".
+            Partitions are comma-separated. 
+            eg. "Table1:Partition1,Partition2|Table2"
+
+    Returns:
+        list: A list of dictionaries, each with a "table" key and an optional "partition" key.
+    """
+    result = [] # Initialize an empty list to store the converted dictionaries
+    if refresh_objects is None or refresh_objects == "All":
+        return result # Return an empty list if the input is None or "All"
+    for item in refresh_objects.split("|"): # Loop through each refresh object, separated by "|"
+        table, *partitions = item.split(":") # Split the item by ":" and assign the first element to table and the rest to partitions
+        if partitions: # If there are any partitions
+            # Extend the result list with a list comprehension that creates a dictionary for each partition
+            # The dictionary has the table name and the partition name as keys
+            # The partition name is stripped of any leading or trailing whitespace
+            result.extend([{"table": table, "partition": partition.strip()} for partition in ",".join(partitions).split(",")])
+        else: # If there are no partitions
+            # Append a dictionary with only the table name as a key to the result list
+            result.append({"table": table})
+    return result # Return the final list of dictionaries
