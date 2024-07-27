@@ -4,7 +4,7 @@ import uuid
 
 from pyspark.sql import functions as F
 
-from notebookutils import mssparkutils
+import notebookutils
 from sempy import fabric
 from sempy.fabric.exceptions import FabricHTTPException
 
@@ -109,7 +109,7 @@ def insert_or_update_job_table(
 
 def execute_dag(dag):
     """Run multiple notebooks in parallel and return the results or raise an exception."""
-    results = mssparkutils.notebook.runMultiple(dag)
+    results = notebookutils.notebook.runMultiple(dag)
     errors = [] # A list to store the errors
     for job, data in results.items(): # Loop through the dictionary
         if data["exception"]: # Check if there is an exception for the job
@@ -160,30 +160,25 @@ def execute_and_log(function: callable, log_lakehouse: str = None, job_name: str
     return result
 
 
-def get_lakehouse_job_status(operation_id: str, lakehouse_name: str, workspace_id: str=fabric.get_workspace_id()) -> dict:
+def get_lakehouse_job_status(operation_id: str, lakehouse_name: str, workspace=None) -> dict:
     """Returns the status of a lakehouse job given its operation ID and lakehouse name.
 
     Args:
         operation_id (str): The ID of the lakehouse job operation.
         lakehouse_name (str): The name of the lakehouse.
-        workspace_id (str, optional): The ID of the workspace. Defaults to None.
+        workspace (str, optional): The name or ID of the workspace. Defaults to the current workspace ID.
 
     Returns:
         dict: A dictionary containing the operation status.
-
-    Raises:
-        FabricHTTPException: If the response status code is not 200.
     """
-    client = fabric.FabricRestClient()
+
+    # Resolve the workspace ID
+    workspace_id = fabric.resolve_workspace_id(workspace)
+
+    # Get the lakehouse ID
     lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id)
-    try:
-        response = client.get(f'/v1/workspaces/{workspace_id}/items/{lakehouse_id}/jobs/instances/{operation_id}')
-        if response.status_code in (200, 403):
-            return response.json()
-        else:
-            raise FabricHTTPException(response)
-    except FabricHTTPException as e:
-        print(e)
+    
+    return get_item_job_instance(item_id=lakehouse_id, job_instance_id=operation_id, workspace_id=workspace_id)
 
 
 def execute_with_retries(func: callable, *args: any, max_retries: int=5, delay: int=10, **kwargs: any) -> None:
@@ -214,8 +209,8 @@ def execute_with_retries(func: callable, *args: any, max_retries: int=5, delay: 
                 print('Maximum retries reached. Function failed.')
                 return
 
-
-def check_operation_status(operation_id, client=fabric.FabricRestClient()):
+ 
+def check_operation_status(operation_id, client=None):
     """
     Polls the status of an operation until it is completed.
 
@@ -227,7 +222,7 @@ def check_operation_status(operation_id, client=fabric.FabricRestClient()):
     Parameters:
     - operation_id (str): The unique identifier of the operation to check.
     - client (fabric.FabricRestClient, optional): An instance of the FabricRestClient used
-      to make the HTTP requests. Defaults to a new instance of FabricRestClient.
+      to make the HTTP requests. Defaults to a new instance of FabricRestClient if not provided.
 
     Raises:
     - Exception: If the operation status is 'Failed', an exception is raised with the
@@ -236,35 +231,172 @@ def check_operation_status(operation_id, client=fabric.FabricRestClient()):
     Prints:
     - A message 'Operation succeeded' if the operation completes successfully.
     """
-    operation_response = client.get(f'/v1/operations/{operation_id}').json()
-    while operation_response['status'] != 'Succeeded':
-        if operation_response['status'] == 'Failed':
+    if client is None:
+        client = fabric.FabricRestClient()
+    
+    while True:
+        operation_response = client.get(f'/v1/operations/{operation_id}').json()
+        status = operation_response['status']
+        
+        if status == 'Succeeded':
+            print('Operation succeeded')
+            break
+        
+        if status == 'Failed':
             error = operation_response['error']
             error_code = error['errorCode']
             error_message = error['message']
             raise Exception(f'Operation failed with error code {error_code}: {error_message}')
+        
         time.sleep(3)
-        operation_response = client.get(f'/v1/operations/{operation_id}').json()
-    print('Operation succeeded')
 
 
-def run_notebook_job(notebook_name, workspace_id):
+def start_on_demand_job(item_id: str, job_type: str, execution_data=None, workspace_id=None) -> str:
     """
-    Runs a notebook job using the specified notebook name and workspace ID.
+    Start an on-demand job for an item in a workspace and return the job instance ID.
+
+    Args:
+        item_id (str): The ID of the item to run the job on.
+        job_type (str): The type of job to run (e.g., TableMaintenance).
+        execution_data (dict, optional): The data needed for job execution. Defaults to None.
+        workspace_id (str, optional): The ID of the workspace. If not provided, it uses the current workspace ID.
+
+    Returns:
+        str: The job instance ID.
+    """
+    client = fabric.FabricRestClient()
+    
+    # Resolve workspace ID if not provided
+    workspace_id = fabric.resolve_workspace_id(workspace_id)
+    
+    # Prepare payload
+    payload = {
+        "executionData": execution_data
+    }
+
+    try:
+        # Start the job
+        response = client.post(
+            f"/v1/workspaces/{workspace_id}/items/{item_id}/jobs/instances?jobType={job_type}",
+            json=payload
+        )
+        response.raise_for_status()  # Raises HTTPError for bad responses
+        
+        # Extract job instance ID from response headers
+        job_instance_id = response.headers["Location"].split("/")[-1]
+        
+        return job_instance_id
+
+    except FabricHTTPException as e:
+        print(e)
+        return None
+
+
+def get_item_job_instance(item_id: str, job_instance_id: str, workspace_id=None) -> dict:
+    """
+    Get the status of a job instance for an item in a workspace.
+
+    Args:
+        item_id (str): The ID of the item.
+        job_instance_id (str): The ID of the job instance.
+        workspace_id (str, optional): The ID of the workspace. If not provided, it resolves using fabric.resolve_workspace_id.
+
+    Returns:
+        dict: The response from the job status API call.
+    """
+    # Resolve workspace ID if not provided
+    workspace_id = fabric.resolve_workspace_id(workspace_id)
+    
+    if not workspace_id:
+        print("Invalid workspace ID.")
+        return None
+
+    client = fabric.FabricRestClient()
+    try:
+        status_response = client.get(f"/v1/workspaces/{workspace_id}/items/{item_id}/jobs/instances/{job_instance_id}")
+        status_response.raise_for_status()
+        return status_response.json()
+    except Exception as e:
+        print(f"Error fetching job status: {e}")
+        return None
+
+
+def run_on_demand_job_and_wait(item_id: str, job_type: str, execution_data=None, workspace_id=None) -> dict:
+    """
+    Run an on-demand job for an item in a workspace and wait for its completion.
+
+    Args:
+        item_id (str): The ID of the item to run the job on.
+        job_type (str): The type of job to run (e.g., TableMaintenance).
+        execution_data (dict, optional): The data needed for job execution. Defaults to None.
+        workspace_id (str, optional): The ID of the workspace. If not provided, it uses the current workspace ID.
+
+    Returns:
+        dict: The response from the job status API call.
+    """
+    # Resolve workspace ID if not provided
+    workspace_id = fabric.resolve_workspace_id(workspace_id)
+
+    # Call the function to start the job and get the job instance ID
+    job_instance_id = start_on_demand_job(item_id, job_type, execution_data, workspace_id)
+    
+    if not job_instance_id:
+        print("Failed to start the job.")
+        return None
+
+    # Polling for job completion
+    print(f"{job_type} job triggered. Waiting for completion...")
+    while True:
+        job_status = get_item_job_instance(item_id, job_instance_id, workspace_id)
+        if not job_status:
+            print("Error fetching job status.")
+            return None
+
+        status = job_status.get('status')
+
+        if status == 'Failed':
+            error_code = job_status.get('failureReason', {}).get('errorCode')
+            if error_code == 'NotFound':
+                time.sleep(30)
+                continue
+
+        if status not in ['InProgress', 'NotStarted']:
+            break
+        
+        time.sleep(30)
+
+    print(f"{job_type} job finished with {status.upper()} status")
+    return job_status
+    
+
+def run_notebook_job(notebook_name, wait_for_completion=False, workspace=None):
+    """
+    Runs a notebook job using the specified notebook name and workspace.
 
     Parameters:
     - notebook_name (str): The name of the notebook to be run.
-    - workspace_id (str): The workspace ID where the notebook is located.
+    - wait_for_completion (bool, optional): Whether to wait for the job to complete. Defaults to False.
+    - workspace (str, optional): The name or ID of the workspace where the notebook is located. Defaults to the current workspace ID.
 
     Returns:
-    None
+    Job status if waiting for completion, otherwise None.
     """
-    try:
-        # Get the notebook ID
-        notebook_id = get_item_id(notebook_name, 'Notebook', workspace_id)
-        
-        # Run the notebook job
-        fabric.run_notebook_job(notebook_id=notebook_id, workspace=workspace_id)
-        
-    except Exception as e:
-        print(f"{e}. Check the run details from Monitoring Hub")
+    # Define the job type
+    job_type = 'RunNotebook'
+    
+    # Resolve the workspace ID
+    workspace_id = fabric.resolve_workspace_id(workspace)
+    
+    # Get the notebook ID
+    notebook_id = get_item_id(notebook_name, 'Notebook', workspace_id)
+    
+    if wait_for_completion:
+        # Run the notebook job and wait for completion
+        return run_on_demand_job_and_wait(item_id=notebook_id, job_type=job_type, workspace_id=workspace_id)
+    else:
+        # Start the notebook job without waiting for completion
+        job_instance_id = start_on_demand_job(item_id=notebook_id, job_type=job_type, workspace_id=workspace_id)
+        if job_instance_id:
+            print(f"{job_type} job triggered with job instance ID: {job_instance_id}. Check the run details from Monitoring Hub.")
+        else:
+            print("Failed to start the job.")

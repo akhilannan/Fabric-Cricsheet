@@ -7,9 +7,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pyspark.sql import DataFrame, SparkSession, functions as F
 from delta.tables import DeltaTable
 
-from notebookutils import mssparkutils
+import notebookutils
 from sempy import fabric
-from sempy.fabric.exceptions import FabricHTTPException
 
 from fabric_utils import get_lakehouse_id, get_lakehouse_path, get_tables_in_lakehouse
 
@@ -210,44 +209,44 @@ def compare_row_count(table1_lakehouse: str, table1_name: str, table2_lakehouse:
         # Compare the row counts and exit or print accordingly
         if row_count_1 == row_count_2:
             # If the row counts are equal, exit the notebook with message "No new data"
-            mssparkutils.notebook.exit("No new data")
+            notebookutils.notebook.exit("No new data")
         else:
             print(f"Cricsheet has {row_count_2 - row_count_1} more matches added")
 
 
-def optimize_and_vacuum_table_api(lakehouse_name: str, table_name: str, workspace_id: str = fabric.get_workspace_id()) -> str:
-    """Optimize and vacuum a table in a lakehouse.
+def optimize_and_vacuum_table_api(lakehouse_name: str, table_name: str, workspace=None) -> str:
+    """
+    Optimize and vacuum a table in a lakehouse.
 
     Args:
         lakehouse_name (str): The name of the lakehouse.
         table_name (str): The name of the table.
-        workspace_id (str, optional): The ID of the workspace. Defaults to fabric.get_workspace_id().
+        workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
 
     Returns:
-        Optional[str]: The operation ID of the job instance, or None if an error occurs.
+        Optional[str]: The job instance ID of the job, or None if an error occurs.
     """
-    client = fabric.FabricRestClient()
-    lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id)
-    payload = {
-        "executionData": {
-            "tableName": table_name,
-            "optimizeSettings": {
-                "vOrder": True
-            },
-            "vacuumSettings": {
-                "retentionPeriod": "7.01:00:00"
-            }
+    # Prepare the execution data payload
+    execution_data = {
+        "tableName": table_name,
+        "optimizeSettings": {
+            "vOrder": True
+        },
+        "vacuumSettings": {
+            "retentionPeriod": "7.01:00:00"
         }
     }
-    try:
-        response = client.post(f"/v1/workspaces/{workspace_id}/items/{lakehouse_id}/jobs/instances?jobType=TableMaintenance", json= payload)
-        if response.status_code != 202:
-            raise FabricHTTPException(response)
-        operation_id = response.headers['Location'].split('/')[-1]
-        return operation_id
-    except FabricHTTPException as e:
-        print(e)
-        return None
+    
+    from job_operations import start_on_demand_job
+    # Call start_on_demand_job to start the job
+    job_instance_id = start_on_demand_job(
+        item_id=get_lakehouse_id(lakehouse_name, fabric.resolve_workspace_id(workspace)),
+        job_type="TableMaintenance",
+        execution_data=execution_data,
+        workspace=fabric.resolve_workspace_id(workspace)
+    )
+    
+    return job_instance_id
 
 
 def optimize_and_vacuum_table(lakehouse_name: str, table_name: str, retain_hours: int = None) -> bool:

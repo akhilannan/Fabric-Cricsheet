@@ -9,20 +9,21 @@ from fabric_utils import create_or_replace_fabric_item, get_item_id, get_lakehou
 from file_operations import encode_to_base64
 
 
-def update_sparkcompute(environment_name, file_path, workspace_id=fabric.get_workspace_id()):
+def update_sparkcompute(environment_name, file_path, workspace=None):
     """
     Updates the SparkCompute configuration for the specified environment.
 
     Args:
         environment_name (str): Name of the target environment.
         file_path (str): Path to the YAML configuration file.
-        workspace_id (str, optional): ID of the workspace. Defaults to fabric.get_workspace_id().
+        workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
 
     Returns:
         str: Success message or error details.
     """
     try:
         client = fabric.FabricRestClient()
+        workspace_id = fabric.resolve_workspace_id(workspace)
         environment_id = get_item_id(environment_name, "Environment", workspace_id)
         if environment_id:
             with open(file_path, 'r') as yaml_file:
@@ -41,19 +42,20 @@ def update_sparkcompute(environment_name, file_path, workspace_id=fabric.get_wor
         return f"Error: {str(e)}"
 
 
-def publish_staging_environment(environment_name, workspace_id=fabric.get_workspace_id()):
+def publish_staging_environment(environment_name, workspace=None):
     """
     Initiates the publishing process for the specified environment.
 
     Args:
         environment_name (str): Name of the target environment.
-        workspace_id (str, optional): ID of the workspace. Defaults to fabric.get_workspace_id().
+        workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
 
     Returns:
         str: Publish status message.
     """
     try:
         client = fabric.FabricRestClient()
+        workspace_id = fabric.resolve_workspace_id(workspace)
         environment_id = get_item_id(environment_name, "Environment", workspace_id)
         if environment_id:
             endpoint = f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/publish"
@@ -71,19 +73,20 @@ def publish_staging_environment(environment_name, workspace_id=fabric.get_worksp
         return f"Error: {str(e)}"
 
 
-def get_publish_state(environment_name, workspace_id=fabric.get_workspace_id()):
+def get_publish_state(environment_name, workspace=None) -> str:
     """
     Retrieves the current publish state of the specified environment.
 
     Args:
         environment_name (str): Name of the target environment.
-        workspace_id (str, optional): ID of the workspace. Defaults to fabric.get_workspace_id().
+        workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
 
     Returns:
         str: Current publish state (e.g., "running", "success", "failed", etc).
     """
     try:
         client = fabric.FabricRestClient()
+        workspace_id = fabric.resolve_workspace_id(workspace)
         environment_id = get_item_id(environment_name, "Environment", workspace_id)
         if environment_id:
             endpoint = f"/v1/workspaces/{workspace_id}/environments/{environment_id}"
@@ -96,20 +99,21 @@ def get_publish_state(environment_name, workspace_id=fabric.get_workspace_id()):
         return f"Error: {str(e)}"
 
 
-def upload_file_to_environment(environment_name, file_path, workspace_id=fabric.get_workspace_id()):
+def upload_file_to_environment(environment_name, file_path, workspace=None) -> str:
     """
     Uploads a library file to the specified environment.
 
     Args:
         environment_name (str): Name of the target environment.
         file_path (str): Path to the library file on the local system.
-        workspace_id (str, optional): ID of the workspace. Defaults to fabric.get_workspace_id().
+        workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
 
     Returns:
         str: Success message or error details.
     """
     try:
         client = fabric.FabricRestClient()
+        workspace_id = fabric.resolve_workspace_id(workspace)
         environment_id = get_item_id(environment_name, "Environment", workspace_id)
         if environment_id:
             url = f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/libraries"
@@ -126,14 +130,14 @@ def upload_file_to_environment(environment_name, file_path, workspace_id=fabric.
         return f"Error: {str(e)}"
     
 
-def upload_files_to_environment(environment_name, file_paths, workspace_id=fabric.get_workspace_id()):
+def upload_files_to_environment(environment_name, file_paths, workspace=None) -> dict:
     """
     Uploads one or more library files to the specified environment.
 
     Args:
         environment_name (str): Name of the target environment.
         file_paths (str or list of str): Path(s) to the library file(s) on the local system.
-        workspace_id (str, optional): ID of the workspace. Defaults to fabric.get_workspace_id().
+        workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
 
     Returns:
         dict: Dictionary with file paths as keys and success messages or error details as values.
@@ -145,6 +149,7 @@ def upload_files_to_environment(environment_name, file_paths, workspace_id=fabri
     results = {}
     try:
         client = fabric.FabricRestClient()
+        workspace_id = fabric.resolve_workspace_id(workspace)
         environment_id = get_item_id(environment_name, "Environment", workspace_id)
         if environment_id:
             url = f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/libraries"
@@ -166,16 +171,15 @@ def upload_files_to_environment(environment_name, file_paths, workspace_id=fabri
     return results
 
 
-
-def create_and_publish_spark_environment(environment_name, yml_path, py_path, workspace_id=fabric.get_workspace_id()):
+def create_and_publish_spark_environment(environment_name, yml_path, py_path, workspace=None):
     """
     Creates or replaces a Spark environment using the specified YAML and Python files.
-    
+
     Args:
+        environment_name (str): Name of the Spark environment.
         yml_path (str): Path to the Spark YAML configuration file.
         py_path (str): Path to the fabric_utils.py file.
-        environment_name (str): Name of the Spark environment.
-        workspace_id (str, optional): ID of the workspace. Defaults to fabric.get_workspace_id().
+        workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
     """
     item_type = "Environment"
     request_body = {
@@ -183,30 +187,43 @@ def create_and_publish_spark_environment(environment_name, yml_path, py_path, wo
         'type': item_type
     }
     
+    # Resolve workspace ID
+    workspace_id = fabric.resolve_workspace_id(workspace)
+    
+    # Create or replace the fabric item
     create_or_replace_fabric_item(request_body, workspace_id)
+    
+    # Upload files to the environment
     print(upload_files_to_environment(environment_name, py_path, workspace_id))
+    
+    # Update SparkCompute configuration
     print(update_sparkcompute(environment_name, yml_path, workspace_id))
+    
+    # Publish the environment
     print(publish_staging_environment(environment_name, workspace_id))
 
 
-def create_or_replace_notebook_from_ipynb(notebook_path, default_lakehouse_name=None, environment_name=None, replacements=None, workspace_id=fabric.get_workspace_id()):
+def create_or_replace_notebook_from_ipynb(notebook_path, default_lakehouse_name=None, environment_name=None, replacements=None, workspace=None):
     """
     Create or replace a notebook in the Fabric workspace.
 
-    This function takes the path to the notebook file, an optional workspace ID, and a dictionary of replacements. It reads the notebook file, encodes the notebook JSON content to Base64, and sends a request to create or replace the notebook item in the specified Fabric workspace.
+    This function takes the path to the notebook file, an optional workspace name or ID, and a dictionary of replacements. It reads the notebook file, encodes the notebook JSON content to Base64, and sends a request to create or replace the notebook item in the specified Fabric workspace.
 
-    Parameters:
-    - notebook_path (str): The path to the notebook .ipynb file.
-    - default_lakehouse_name (str): An optional parameter to set the default lakehouse name.
-    - environment_name (str): An optional parameter to set the environment name.
-    - replacements (dict): An optional dictionary where each key-value pair represents a string to find and a string to replace it with in the code cells of the notebook.
-    - workspace_id (str): An optional parameter to set the workspace in which the lakehouse resides. This defaults to the workspace in which the notebook resides.
+    Args:
+        notebook_path (str): The path to the notebook .ipynb file.
+        default_lakehouse_name (str, optional): An optional parameter to set the default lakehouse name.
+        environment_name (str, optional): An optional parameter to set the environment name.
+        replacements (dict, optional): A dictionary where each key-value pair represents a string to find and a string to replace it with in the code cells of the notebook.
+        workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
 
     Returns:
-    None
+        None
     """
     # Define the object type for the notebook.
     object_type = 'Notebook'
+
+    # Resolve the workspace ID
+    workspace_id = fabric.resolve_workspace_id(workspace)
 
     # Extract the notebook name from the path (excluding the .ipynb extension)
     notebook_name = os.path.splitext(os.path.basename(notebook_path))[0]
@@ -266,5 +283,5 @@ def create_or_replace_notebook_from_ipynb(notebook_path, default_lakehouse_name=
         }
     }
 
-    # Call the function to create or replace the notebook item in the Power BI workspace.
+    # Call the function to create or replace the notebook item in the workspace.
     create_or_replace_fabric_item(request_body, workspace_id)

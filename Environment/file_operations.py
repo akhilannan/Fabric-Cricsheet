@@ -94,24 +94,29 @@ def unzip_parallel(lakehouse: str, zip_relative_path: str, extract_relative_path
         print(f"An error occurred: {e}")
 
 
-def download_data(url, lakehouse, path, workspace_id: str = fabric.get_workspace_id()):
+def download_data(url, lakehouse, path, workspace=None):
     """
-    Downloads a zip file from the base URL and extracts it to the lake path.
+    Downloads a file from the given URL and saves it to the specified path in the lakehouse.
 
     Parameters
     ----------
+    url : str
+        The URL of the file to be downloaded.
+    lakehouse : str
+        Name of the Lakehouse.
     path : str
         The path of the directory where the data will be stored.
-    url : str
-        The URL of the zip file to be downloaded.
-    lakehouse: str
-        Name of Lakehouse
+    workspace : str, optional
+        The name or ID of the workspace. Defaults to the current workspace ID.
 
     Returns
     -------
     str
         The file path of the downloaded file.
     """
+    # Resolve the workspace ID
+    workspace_id = fabric.resolve_workspace_id(workspace)
+
     # Create a lake path
     lake_path = os.path.join(get_lakehouse_path(lakehouse, "local", "Files", workspace_id), path)
 
@@ -182,18 +187,21 @@ def decode_from_base64(encoded_data):
     return decoded_json
 
 
-def delete_folder_from_lakehouse(lakehouse, path, workspace_id = fabric.get_workspace_id()):
+def delete_folder_from_lakehouse(lakehouse, path, workspace=None):
     """
     Deletes a folder from the specified lakehouse.
 
     Parameters:
     - lakehouse (str): The name of the lakehouse.
     - path (str): The folder path to be deleted within the lakehouse.
-    - workspace_id (str): The workspace ID.
+    - workspace (str, optional): The name or ID of the workspace. Defaults to the current workspace ID.
 
     Returns:
     None
     """
+    # Resolve the workspace ID
+    workspace_id = fabric.resolve_workspace_id(workspace)
+
     # Construct the lake path
     lake_path = os.path.join(get_lakehouse_path(lakehouse, "local", "Files", workspace_id), path)
     

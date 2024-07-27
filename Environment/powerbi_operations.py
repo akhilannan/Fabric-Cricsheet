@@ -9,21 +9,25 @@ from sempy import fabric
 from sempy.fabric.exceptions import FabricHTTPException
 
 from fabric_utils import (get_lakehouse_id, create_or_replace_fabric_item, get_item_id,
-                          extract_item_name_and_type_from_path, is_dataset_exists, get_fabric_items)
+                          extract_item_name_and_type_from_path, is_dataset_exists)
 from file_operations import encode_to_base64, get_file_content_as_base64
 
 
-def get_server_db(lakehouse_name: str, workspace_id: str = fabric.get_workspace_id()) -> tuple:
+def get_server_db(lakehouse_name: str, workspace=None) -> tuple:
     """
     Retrieves the server and database details for a given lakehouse.
 
     Args:
         lakehouse_name (str): The name of the lakehouse.
-        workspace_id (str, optional): The workspace ID. Defaults to Current workspace id.
+        workspace (str, optional): The name or ID of the workspace. Defaults to the current workspace ID.
 
     Returns:
         tuple: A tuple containing the SQL Analytics server connection string and database ID.
+
+    Raises:
+        Exception: If the request to get lakehouse details fails.
     """
+    workspace_id = fabric.resolve_workspace_id(workspace)
     client = fabric.FabricRestClient()
     lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id)
     response = client.get(f"/v1/workspaces/{workspace_id}/lakehouses/{lakehouse_id}")
@@ -38,34 +42,44 @@ def get_server_db(lakehouse_name: str, workspace_id: str = fabric.get_workspace_
         raise Exception(f"Failed to get lakehouse details: {response.status_code}")
 
 
-def get_shared_expression(lakehouse_name: str, workspace_id: str = fabric.get_workspace_id()) -> str:
+def get_shared_expression(lakehouse_name: str, workspace=None) -> str:
     """
-    This function generates the shared expression statement for a given lakehouse and its SQL endpoint.
+    Generates the shared expression statement for a given lakehouse and its SQL endpoint.
 
     Args:
-        lakehouse_name (str): An optional parameter to set the lakehouse. This defaults to the lakehouse attached to the notebook.        
-        workspace_id (str, optional): An optional parameter to set the workspace in which the lakehouse resides. This defaults to the workspace in which the notebook resides.
+        lakehouse_name (str): The name of the lakehouse.
+        workspace (str, optional): The name or ID of the workspace in which the lakehouse resides. Defaults to the current workspace ID.
 
     Returns:
-        This function returns an M statement which can be used as the expression in the shared expression for a Direct Lake semantic model.
+        str: An M statement which can be used as the expression in the shared expression for a Direct Lake semantic model.
     """
+    # Resolve the workspace ID
+    workspace_id = fabric.resolve_workspace_id(workspace)
+    
+    # Retrieve server and database details
     server, db = get_server_db(lakehouse_name, workspace_id)
-    m_statement = 'let\n\tdatabase = Sql.Database("' + server + '", "' + db + '")\nin\n\tdatabase'
+    
+    # Create the M statement
+    m_statement = f'let\n\tdatabase = Sql.Database("{server}", "{db}")\nin\n\tdatabase'
+    
     return m_statement
 
 
-def update_model_expression(dataset_name: str, lakehouse_name: str, workspace_id: str=fabric.get_workspace_id()) -> None:
+def update_model_expression(dataset_name: str, lakehouse_name: str, workspace=None) -> None:
     """
     Update the expression in the semantic model to point to the specified lakehouse.
 
     Args:
-    - dataset_name (str): The name of the dataset.
-    - lakehouse_name (str): The name of the lakehouse.
-    - workspace_id (str, optional): An optional parameter to set the workspace in which the lakehouse resides. This defaults to the workspace in which the notebook resides.
+        dataset_name (str): The name of the dataset.
+        lakehouse_name (str): The name of the lakehouse.
+        workspace (str, optional): The ID or name of the workspace where the lakehouse resides. Defaults to the current workspace if not provided.
+
     """
+    workspace_id = fabric.resolve_workspace_id(workspace)
     tom_server = fabric.create_tom_server(readonly=False, workspace=workspace_id)
     tom_database = tom_server.Databases.GetByName(dataset_name)
     shared_expression = get_shared_expression(lakehouse_name, workspace_id)
+    
     try:
         model = tom_database.Model
         model.Expressions['DatabaseQuery'].Expression = shared_expression
@@ -130,39 +144,21 @@ def update_definition_pbir(folder_path: str, dataset_id: str) -> None:
         raise Exception(f"An error occurred while updating the file '{file_path}': {str(e)}")
 
 
-def create_or_replace_semantic_model(model_path: str, workspace_id=fabric.get_workspace_id()) -> None:
+def create_or_replace_semantic_model(model_path: str, workspace=None) -> None:
     """
     Create or replace a Power BI semantic model from a given path.
 
     Args:
         model_path (str): The path to the folder containing the semantic model.
-        workspace_id (str): The ID of the workspace to which the semantic model will be deployed. If not provided, defaults to the current workspace ID.
+        workspace (str, optional): The ID or name of the workspace to which the semantic model will be deployed. If not provided, defaults to the current workspace.
 
     Raises:
         ValueError: If the model_path is invalid.
         Exception: For any other exceptions that might occur during the process.
     """
-    if not os.path.isdir(model_path):
-        raise ValueError(f"The model path '{model_path}' does not exist or is not a directory.")
-    try:
-        request_body = create_powerbi_item_request_body(model_path)
-        create_or_replace_fabric_item(request_body, workspace_id)
-    except Exception as e:
-        raise Exception(f'An error occurred while creating or replacing the semantic model: {str(e)}')
-
-
-def create_or_replace_semantic_model(model_path: str, workspace_id=fabric.get_workspace_id()) -> None:
-    """
-    Create or replace a Power BI semantic model from a given path.
-
-    Args:
-        model_path (str): The path to the folder containing the semantic model.
-        workspace_id (str): The ID of the workspace to which the semantic model will be deployed. If not provided, defaults to the current workspace ID.
-
-    Raises:
-        ValueError: If the model_path is invalid.
-        Exception: For any other exceptions that might occur during the process.
-    """
+    # Resolve the workspace_id from the workspace parameter
+    workspace_id = fabric.resolve_workspace_id(workspace)
+    
     # Validate input parameters
     if not os.path.isdir(model_path):
         raise ValueError(f"The model path '{model_path}' does not exist or is not a directory.")
@@ -178,19 +174,24 @@ def create_or_replace_semantic_model(model_path: str, workspace_id=fabric.get_wo
         raise Exception(f"An error occurred while creating or replacing the semantic model: {str(e)}")
 
 
-def create_or_replace_report_from_pbir(report_path: str, dataset_name: str, dataset_workspace_id=fabric.get_workspace_id(), report_workspace_id =fabric.get_workspace_id()) -> None:
+def create_or_replace_report_from_pbir(report_path: str, dataset_name: str, dataset_workspace=None, report_workspace=None) -> None:
     """
-    Create or replace a Power BI report in service from PBIR and point it to a dataset
+    Create or replace a Power BI report in service from PBIR and point it to a dataset.
 
     Args:
         report_path (str): The path to the folder containing the 'definition.pbir' file.
         dataset_name (str): The name of the dataset to be used in the report.
-        workspace_id (Optional[str]): The ID of the workspace. If not provided, defaults to the current workspace ID.
+        dataset_workspace (str, optional): The ID or name of the workspace containing the dataset. Defaults to the current workspace if not provided.
+        report_workspace (str, optional): The ID or name of the workspace where the report will be deployed. Defaults to the current workspace if not provided.
 
     Raises:
         ValueError: If the report_path or dataset_name is invalid.
         Exception: For any other exceptions that might occur during the process.
     """
+    # Resolve the workspace_ids from the workspace parameters
+    dataset_workspace_id = fabric.resolve_workspace_id(dataset_workspace)
+    report_workspace_id = fabric.resolve_workspace_id(report_workspace)
+    
     # Validate input parameters
     if not os.path.isdir(report_path):
         raise ValueError(f"The report path '{report_path}' does not exist or is not a directory.")
@@ -214,7 +215,7 @@ def create_or_replace_report_from_pbir(report_path: str, dataset_name: str, data
         raise Exception(f"An error occurred while creating or replacing the report: {str(e)}")
 
 
-def create_or_replace_report_from_reportjson(report_name, dataset_name, report_json, theme_json=None, workspace_id=fabric.get_workspace_id()):
+def create_or_replace_report_from_reportjson(report_name, dataset_name, report_json, theme_json=None, workspace=None):
     """
     Create or replace a report from a report JSON definition.
 
@@ -223,23 +224,23 @@ def create_or_replace_report_from_reportjson(report_name, dataset_name, report_j
         dataset_name (str): The name of the dataset.
         report_json (dict): The JSON definition of the report.
         theme_json (dict, optional): The JSON definition of the theme. Defaults to None.
-        workspace_id (str, optional): An optional parameter to set the workspace in which the lakehouse resides. This defaults to the workspace in which the notebook resides.
+        workspace (str, optional): The ID or name of the workspace where the report will be deployed. Defaults to the current workspace if not provided.
 
     Returns:
         None
     """
-
+    
+    # Resolve the workspace_id from the workspace parameter
+    workspace_id = fabric.resolve_workspace_id(workspace)
+    
     # Define the object type for the report
     object_type = 'Report'
 
-    # Retrieve the semantic model associated with the dataset name
-    dataset_df = get_fabric_items(item_name=dataset_name, item_type='SemanticModel', workspace_id = workspace_id)
-    if dataset_df.empty:
+    # Retrieve the dataset id associated with the dataset name
+    dataset_id = get_item_id(item_name=dataset_name, item_type='SemanticModel', workspace_id=workspace_id)
+    if dataset_id is None:
         print(f"ERROR: The '{dataset_name}' semantic model does not exist.")
         return
-
-    # Extract the ID of the dataset
-    dataset_id = dataset_df['Id'].iloc[0]
 
     # Prepare the Power BI report definition
     pbir_def = {
@@ -350,7 +351,7 @@ def create_powerbi_item_request_body(parent_folder_path):
 
 def start_enhanced_refresh(
     dataset_name: str,
-    workspace_name: str = fabric.get_workspace_id(),
+    workspace=None,
     refresh_objects: str = "All",
     refresh_type: str = "full",
     commit_mode: str = "transactional",
@@ -362,25 +363,28 @@ def start_enhanced_refresh(
     """Starts an enhanced refresh of a dataset.
 
     Args:
-        dataset_name: The name of the dataset to refresh.
-        workspace_name: The name of the workspace where the dataset is located. Defaults to the current workspace.
-        refresh_objects: The objects to refresh in the dataset. Can be "All" or a list of object names. Defaults to "All".
-        refresh_type: The type of refresh to perform. Can be "full" or "incremental". Defaults to "full".
-        commit_mode: The commit mode to use for the refresh. Can be "transactional" or "streaming". Defaults to "transactional".
-        max_parallelism: The maximum number of parallel threads to use for the refresh. Defaults to 10.
-        retry_count: The number of times to retry the refresh in case of failure. Defaults to 0.
-        apply_refresh_policy: Whether to apply the refresh policy defined in the dataset. Defaults to False.
-        effective_date: The date to use for the refresh. Defaults to today.
+        dataset_name (str): The name of the dataset to refresh.
+        workspace (str, optional): The ID or name of the workspace where the dataset is located. Defaults to the current workspace if not provided.
+        refresh_objects (str, optional): The objects to refresh in the dataset. Can be "All" or a list of object names. Defaults to "All".
+        refresh_type (str, optional): The type of refresh to perform. Can be "full" or "incremental". Defaults to "full".
+        commit_mode (str, optional): The commit mode to use for the refresh. Can be "transactional" or "streaming". Defaults to "transactional".
+        max_parallelism (int, optional): The maximum number of parallel threads to use for the refresh. Defaults to 10.
+        retry_count (int, optional): The number of times to retry the refresh in case of failure. Defaults to 0.
+        apply_refresh_policy (bool, optional): Whether to apply the refresh policy defined in the dataset. Defaults to False.
+        effective_date (datetime.date, optional): The date to use for the refresh. Defaults to today.
 
     Returns:
-        The refresh request id.
+        str: The refresh request ID.
 
     Raises:
         FabricException: If the refresh fails or encounters an error.
     """
+    # Resolve the workspace_id from the workspace parameter
+    workspace_id = fabric.resolve_workspace_id(workspace)
+    
     objects_to_refresh = convert_to_json(refresh_objects)
     return fabric.refresh_dataset(
-        workspace=workspace_name,
+        workspace=workspace_id,
         dataset=dataset_name,
         objects=objects_to_refresh,
         refresh_type=refresh_type,
@@ -392,23 +396,26 @@ def start_enhanced_refresh(
     )
 
 
-def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, workspace_name: str = fabric.resolve_workspace_name(fabric.get_workspace_id())) -> pd.DataFrame:
+def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, workspace=None) -> pd.DataFrame:
     """Get enhanced refresh details for a given dataset and refresh request ID.
 
     Args:
         dataset_name (str): The name of the dataset.
         refresh_request_id (str): The ID of the refresh request.
-        workspace_name (str, optional): The name of the workspace. Defaults to name workspace where Notebook reside.
+        workspace (str, optional): The ID or name of the workspace. Defaults to the current workspace if not provided.
 
     Returns:
         pd.DataFrame: A dataframe with the refresh details, messages, and time taken in seconds.
     """
+    # Resolve the workspace_id from the workspace parameter
+    workspace_id = fabric.resolve_workspace_id(workspace)
+    
     # Get the refresh execution details from fabric
-    refresh_details = fabric.get_refresh_execution_details(workspace=workspace_name, dataset=dataset_name, refresh_request_id=refresh_request_id)
+    refresh_details = fabric.get_refresh_execution_details(workspace=workspace_id, dataset=dataset_name, refresh_request_id=refresh_request_id)
     
     # Create a dataframe with the refresh details
     df = pd.DataFrame({
-        'workspace': [workspace_name],
+        'workspace': [workspace_id],
         'dataset': [dataset_name],
         'start_time': [refresh_details.start_time],
         'end_time': [refresh_details.end_time if refresh_details.end_time is not None else None],
@@ -435,13 +442,13 @@ def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, wor
     return df.merge(df_msg, how='outer', on='dataset')
 
 
-def cancel_enhanced_refresh(request_id: str, dataset_id: str, workspace_id: str = fabric.get_workspace_id()) -> dict:
+def cancel_enhanced_refresh(request_id: str, dataset_id: str, workspace=None) -> dict:
     """Cancel an enhanced refresh request for a Power BI dataset.
 
     Args:
         request_id (str): The ID of the refresh request to cancel.
         dataset_id (str): The ID of the dataset to cancel the refresh for.
-        workspace_id (str, optional): The ID of the workspace containing the dataset. Defaults to the current workspace.
+        workspace (str, optional): The ID or name of the workspace containing the dataset. Defaults to the current workspace if not provided.
 
     Returns:
         dict: The JSON response from the Power BI REST API.
@@ -449,6 +456,9 @@ def cancel_enhanced_refresh(request_id: str, dataset_id: str, workspace_id: str 
     Raises:
         FabricHTTPException: If the request fails with a non-200 status code.
     """
+    
+    # Resolve the workspace_id from the workspace parameter
+    workspace_id = fabric.resolve_workspace_id(workspace)
     
     # Create a Power BI REST client object
     client = fabric.PowerBIRestClient()
@@ -469,7 +479,7 @@ def cancel_enhanced_refresh(request_id: str, dataset_id: str, workspace_id: str 
 
 def refresh_and_wait(
     dataset_list: list[str],
-    workspace: str = fabric.get_workspace_id(),
+    workspace=None,
     logging_lakehouse: str = None,
     parent_job_name: str = None,
     job_category: str = "Adhoc",
@@ -478,10 +488,11 @@ def refresh_and_wait(
     Waits for enhanced refresh of given datasets.
 
     Args:
-      dataset_list: List of datasets to refresh.
-      workspace: The workspace ID where the datasets are located. Defaults to the current workspace.
-      logging_lakehouse: The name of the lakehouse where the job information will be logged. Defaults to None.
-      parent_job_name: The name of the parent job that triggered the refresh. Defaults to None.
+      dataset_list (list[str]): List of datasets to refresh.
+      workspace (str, optional): The ID or name of the workspace where the datasets are located. Defaults to the current workspace if not provided.
+      logging_lakehouse (str, optional): The name of the lakehouse where the job information will be logged. Defaults to None.
+      parent_job_name (str, optional): The name of the parent job that triggered the refresh. Defaults to None.
+      job_category (str, optional): The category of the job. Defaults to "Adhoc".
 
     Returns:
       None
@@ -491,16 +502,19 @@ def refresh_and_wait(
     """
     from job_operations import insert_or_update_job_table
 
+    # Resolve the workspace_id from the workspace parameter
+    workspace_id = fabric.resolve_workspace_id(workspace)
+
     # Filter out the datasets that do not exist
     valid_datasets = [
-                dataset
-                for dataset in dataset_list
-                if is_dataset_exists(dataset, workspace)
-            ]
+        dataset
+        for dataset in dataset_list
+        if is_dataset_exists(dataset, workspace_id)
+    ]
 
     # Start the enhanced refresh for the valid datasets
     request_ids = {
-        dataset: start_enhanced_refresh(dataset, workspace)
+        dataset: start_enhanced_refresh(dataset, workspace_id)
         for dataset in valid_datasets
     }
 
@@ -523,11 +537,11 @@ def refresh_and_wait(
         print(f"The following datasets do not exist: {', '.join(invalid_datasets)}")
 
     # Loop until all the requests are completed
-    request_status_dict = {} # Initialize an empty dictionary to store the request status of each dataset
+    request_status_dict = {}  # Initialize an empty dictionary to store the request status of each dataset
     while True:
         for dataset, request_id in request_ids.copy().items():
             # Get the status and details of the current request
-            request_status_df = get_enhanced_refresh_details(dataset, request_id, workspace)
+            request_status_df = get_enhanced_refresh_details(dataset, request_id, workspace_id)
             request_status = request_status_df["status"].iloc[0]
 
             # If the request is not unknown, print the details, store the status in the dictionary, and remove it from the request_ids
