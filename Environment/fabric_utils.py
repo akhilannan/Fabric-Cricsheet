@@ -27,15 +27,16 @@ def get_all_items_with_pagination(endpoint: str, params: dict = None) -> list:
             response = client.get(endpoint, params=params)
             response.raise_for_status()
             data = response.json()
-            
-            items = data.get('value', [])
+
+            items = data.get('value', data.get('data', []))
             all_items.extend(items)
-            
-            if 'continuationToken' not in data:
+
+            continuation_token = data.get('continuationToken')
+            if not continuation_token:
                 break
-            
-            params['continuationToken'] = data['continuationToken']
-        
+
+            params['continuationToken'] = continuation_token
+
         except FabricHTTPException as e:
             print(f"Error fetching data: {e}")
             break
@@ -226,7 +227,6 @@ def create_or_replace_fabric_item(request_body, workspace=None):
             url = f"{url}/{item_id}/updateDefinition"
             action = "replaced"
         else:
-            print(f"'{item_name}' already exists as a {item_type} in the workspace")
             return item_id
 
     # Perform the API request
@@ -375,34 +375,68 @@ def delete_path(lakehouse, item, folder_type='Tables'):
         print(f'Path does not exist: {path_item}')
 
 
-def get_tables_in_lakehouse(lakehouse_name):
-    """Returns a list of tables in the given lakehouse.
+def get_delta_tables_in_lakehouse(lakehouse_name: str, workspace=None) -> list:
+    """
+    Retrieve names of tables with format 'delta' from a specified lakehouse within a workspace.
 
     Args:
         lakehouse_name (str): The name of the lakehouse.
+        workspace (str): The name or ID of the workspace. If not provided, it uses the current workspace ID.
 
     Returns:
-        list: A list of table names, or an empty list if the lakehouse does not exist or is empty.
+        List[str]: A list of table names with format 'delta' in the specified lakehouse.
     """
     try:
-        table_list = [file.name for file in notebookutils.fs.ls(get_lakehouse_path(lakehouse_name))]
+        workspace_id = fabric.resolve_workspace_id(workspace)
+        lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id)
+        tables = get_all_items_with_pagination(f"/v1/workspaces/{workspace_id}/lakehouses/{lakehouse_id}/tables")
+        
+        delta_tables = [table['name'] for table in tables if table.get('format') == 'delta']
     except Exception as e:
         print(e)
-        table_list = []
-    return table_list
+        delta_tables = []
+
+    return delta_tables
 
 
-def is_dataset_exists(dataset: str, workspace=None) -> bool:
+def get_semantic_models(workspace=None) -> list:
     """
-    Check if a dataset exists in a given workspace.
+    Retrieve IDs and display names of semantic models from a specified workspace.
 
     Args:
-        dataset (str): The name of the dataset to check.
-        workspace (str, optional): The name or ID of the workspace to search in.
-                                   If not provided, it uses the current workspace ID.
+        workspace (str): The name or ID of the workspace. If not provided, it uses the current workspace ID.
 
     Returns:
-        bool: True if the dataset exists, False otherwise.
+        List[dict]: A list of dictionaries with 'id' and 'displayName' of the semantic models in the specified workspace.
     """
-    workspace_id = fabric.resolve_workspace_id(workspace)
-    return not fabric.list_datasets(workspace_id).query(f"`Dataset Name` == '{dataset}'").empty
+    try:
+        workspace_id = fabric.resolve_workspace_id(workspace)
+        semantic_models = get_all_items_with_pagination(f"/v1/workspaces/{workspace_id}/semanticModels")
+        
+        model_info = [{'id': model['id'], 'displayName': model['displayName']} for model in semantic_models]
+    except Exception as e:
+        print(e)
+        model_info = []
+
+    return model_info
+
+
+def does_semantic_model_exist(semantic_model_name: str, workspace=None) -> bool:
+    """
+    Check if a semantic model with the given name exists in the specified workspace.
+
+    Args:
+        semantic_model_name (str): The name of the semantic model to check.
+        workspace (str): The name or ID of the workspace. If not provided, it uses the current workspace ID.
+
+    Returns:
+        bool: True if the semantic model exists, False otherwise.
+    """
+    try:
+        semantic_models = get_semantic_models(workspace)
+        exists = any(model['displayName'] == semantic_model_name for model in semantic_models)
+    except Exception as e:
+        print(e)
+        exists = False
+
+    return exists

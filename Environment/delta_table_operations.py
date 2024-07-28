@@ -10,7 +10,7 @@ from delta.tables import DeltaTable
 import notebookutils
 from sempy import fabric
 
-from fabric_utils import get_lakehouse_id, get_lakehouse_path, get_tables_in_lakehouse
+from fabric_utils import get_lakehouse_id, get_lakehouse_path, get_delta_tables_in_lakehouse
 
 
 spark = SparkSession.builder.getOrCreate()
@@ -354,7 +354,7 @@ def optimize_and_vacuum_items(items_to_optimize_vacuum: str | dict, retain_hours
     """
 
     # Prepare tasks
-    tasks = prepare_optimization_items(items_to_optimize_vacuum)
+    tasks = prepare_optimization_items(items_to_optimize_vacuum, retain_hours)
 
     # Use ThreadPoolExecutor for parallel execution
     with ThreadPoolExecutor(max_workers=parallelism) as executor:
@@ -390,7 +390,7 @@ def prepare_optimization_items(items_to_optimize_vacuum, retain_hours=None):
     # Iterate over the lakehouses and their respective tables
     for lakehouse_name, table_list in items_to_optimize_vacuum.items():
         # If no table list is provided, retrieve all tables in the lakehouse
-        table_list = table_list or get_tables_in_lakehouse(lakehouse_name)
+        table_list = table_list or get_delta_tables_in_lakehouse(lakehouse_name)
         # Ensure the table_list is a list even if a single table name is provided
         table_list = [table_list] if isinstance(table_list, str) else table_list
         # Create a task for each table

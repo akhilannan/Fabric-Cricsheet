@@ -9,7 +9,7 @@ from sempy import fabric
 from sempy.fabric.exceptions import FabricHTTPException
 
 from fabric_utils import (get_lakehouse_id, create_or_replace_fabric_item, get_item_id,
-                          extract_item_name_and_type_from_path, is_dataset_exists)
+                          extract_item_name_and_type_from_path, does_semantic_model_exist)
 from file_operations import encode_to_base64, get_file_content_as_base64
 
 
@@ -509,7 +509,7 @@ def refresh_and_wait(
     valid_datasets = [
         dataset
         for dataset in dataset_list
-        if is_dataset_exists(dataset, workspace_id)
+        if does_semantic_model_exist(dataset, workspace_id)
     ]
 
     # Start the enhanced refresh for the valid datasets
