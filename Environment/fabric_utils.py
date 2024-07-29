@@ -1,11 +1,100 @@
 import os
+import time
 
 import notebookutils
 from sempy import fabric
-from sempy.fabric.exceptions import FabricHTTPException
 
 
-def get_all_items_with_pagination(endpoint: str, params: dict = None) -> list:
+def call_api(url, method, body=None, params=None, files=None, client=None, client_type='fabric'):
+    """
+    Calls an API with the specified URL, method, body, and params.
+
+    Args:
+        url: The URL of the API endpoint.
+        method: The HTTP method to use for the request.
+        body: The JSON body to include in the request. Defaults to None.
+        params: The URL parameters to include in the request. Defaults to None.
+        files: Optional dictionary of files to upload. Defaults to None.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+        client_type: The type of client to initialize ('fabric' or 'powerbi'). Defaults to 'fabric'.
+
+    Returns:
+        The response from the API call.
+
+    Raises:
+        ValueError: If an invalid method or client_type is provided.
+    """    
+    # Use the provided client if available
+    if client is None:
+        # Define a dictionary to map client types to their respective client classes
+        client_classes = {
+            'fabric': fabric.FabricRestClient,
+            'powerbi': fabric.PowerBIRestClient
+        }
+
+        # Get the appropriate client class
+        client_class = client_classes.get(client_type.lower())
+        if client_class is None:
+            raise ValueError(f"Invalid client_type: {client_type}. Must be 'fabric' or 'powerbi'.")
+
+        # Initialize the client
+        client = client_class()
+
+    # Get the method from the client
+    try:
+        client_method = getattr(client, method.lower())
+    except AttributeError:
+        raise ValueError(f"Invalid method: {method}")
+
+    # Make the API call
+    try:
+        response = client_method(url, json=body, params=params, files=files)
+        response.raise_for_status()
+    except fabric.exceptions.FabricHTTPException as e:
+        raise Exception(f"An error occurred with the Fabric API: {e}")
+    except Exception as e:
+        raise Exception(f"An unexpected error occurred: {e}")
+
+    return response
+
+
+def poll_operation_status(operation_id: str):
+    """
+    Polls the status of an operation until it is completed.
+
+    This function repeatedly checks the status of an operation using its ID by making
+    HTTP GET requests to the API. The status is checked every 5 seconds until
+    the operation is either completed successfully or fails. If the operation fails,
+    an exception is raised with details of the error.
+
+    Parameters:
+    - operation_id (str): The unique identifier of the operation to check.
+
+    Raises:
+    - Exception: If the operation status is 'Failed', an exception is raised with the
+      error code and message from the response.
+
+    Prints:
+    - A message 'Operation succeeded' if the operation completes successfully.
+    """
+    while True:
+        response = call_api(f'/v1/operations/{operation_id}', 'get').json()
+        status = response['status']
+        
+        if status == 'Succeeded':
+            print('Operation succeeded')
+            break
+        
+        if status == 'Failed':
+            error = response['error']
+            error_code = error['errorCode']
+            error_message = error['message']
+            raise Exception(f'Operation failed with error code {error_code}: {error_message}')
+        
+        time.sleep(5)
+
+
+def get_all_items_with_pagination(endpoint: str, params: dict=None):
     """
     Fetch all items from a paginated API endpoint.
 
@@ -14,18 +103,16 @@ def get_all_items_with_pagination(endpoint: str, params: dict = None) -> list:
         params (dict, optional): Additional query parameters for the API request.
 
     Returns:
-        List[Dict[str, Any]]: A list of all items retrieved from the API.
+        list: A list of all items retrieved from the API.
     """
     if params is None:
         params = {}
 
-    client = fabric.FabricRestClient()
     all_items = []
 
     while True:
         try:
-            response = client.get(endpoint, params=params)
-            response.raise_for_status()
+            response = call_api(endpoint, 'get', params=params)
             data = response.json()
 
             items = data.get('value', data.get('data', []))
@@ -37,7 +124,7 @@ def get_all_items_with_pagination(endpoint: str, params: dict = None) -> list:
 
             params['continuationToken'] = continuation_token
 
-        except FabricHTTPException as e:
+        except Exception as e:
             print(f"Error fetching data: {e}")
             break
 
@@ -61,7 +148,7 @@ def get_fabric_capacities() -> list:
     return filtered_capacities
 
 
-def get_fabric_items(item_name: str = None, item_type: str = None, workspace=None) -> list:
+def get_fabric_items(item_name: str = None, item_type: str = None, workspace: str=None) -> list:
     """
     Retrieve fabric items from a specified workspace, optionally filtered by item name and type.
 
@@ -85,7 +172,7 @@ def get_fabric_items(item_name: str = None, item_type: str = None, workspace=Non
     return all_items
 
 
-def get_item_id(item_name: str, item_type: str, workspace=None) -> str:
+def get_item_id(item_name: str, item_type: str, workspace: str=None) -> str:
     """
     Get the ID of a specific item based on its name and type.
 
@@ -107,7 +194,7 @@ def get_item_id(item_name: str, item_type: str, workspace=None) -> str:
     return items[0]['id']
 
 
-def get_lakehouse_id(lakehouse_name: str, workspace=None) -> str:
+def get_lakehouse_id(lakehouse_name: str, workspace: str=None) -> str:
     """
     Retrieves the ID of a Fabric Lakehouse item based on its display name.
 
@@ -162,15 +249,13 @@ def get_or_create_fabric_workspace(workspace_name: str, capacity_id: str = None)
                 raise Exception("No suitable capacity found and capacity_id was not provided")
     
         # Create a new workspace using the provided workspace name and capacity ID
-        client = fabric.FabricRestClient()
         body = {
             "displayName": workspace_name,
             "capacityId": capacity_id
         }
         try:
             # Make the POST request to create the workspace
-            response = client.post("/v1/workspaces", json=body)
-            response.raise_for_status()
+            response = call_api("/v1/workspaces", 'post', body=body)
             
             # Parse the response JSON
             data = response.json()
@@ -178,60 +263,67 @@ def get_or_create_fabric_workspace(workspace_name: str, capacity_id: str = None)
             # Return the ID of the newly created workspace
             return data.get('id')
         
-        except FabricHTTPException as e:
+        except Exception as e:
             print(f"Error creating workspace: {e}")
             raise Exception("Failed to create workspace")
 
 
-def create_or_replace_fabric_item(request_body, workspace=None):
+def get_create_or_update_fabric_item(item_name: str, item_type: str, item_definition: dict=None, item_description: str=None, old_item_name: str=None, workspace: str=None):
     """
-    Create or replace a fabric item within a given workspace.
-
-    This function checks if an item with the given name and type already exists within the workspace.
-    If it does not exist, it creates a new item. If it does exist, it replaces the existing item with the new definition.
+    Gets, creates, or updates a Fabric item within a given workspace.
 
     Parameters:
-    - workspace (str, optional): The name or ID of the workspace where the item is to be created or replaced.
+    - item_name (str): The display name of the item.
+    - item_type (str): The type of the item.
+    - item_definition (dict, optional): The definition of the item. Default is None.
+    - item_description (str, optional): The description of the item. Default is None.
+    - old_item_name (str, optional): The old display name of the item for renaming. Default is None.
+    - workspace (str, optional): The name or ID of the workspace where the item is to be created or updated.
                                  If not provided, it uses the default workspace ID.
-    - request_body (dict): The definition of the item in JSON format. Should contain "displayName" and "type".
 
     Returns:
-    - str: The ID of the item if the operation is successful. Returns `None` if the operation fails.
+    - str: The ID of the item, whether it was newly created, updated, or already existed.
+           Returns `None` if the operation fails.
     """
-    from job_operations import check_operation_status
-
-    # Resolve the workspace_id from the workspace parameter
     workspace_id = fabric.resolve_workspace_id(workspace)
 
-    # Extract item_name and item_type from request_body
-    item_name = request_body.get("displayName")
-    item_type = request_body.get("type")
+    # Build the request_body
+    request_body = {
+        "displayName": item_name,
+        "type": item_type
+    }
 
-    # Check if 'item_name' and 'item_type' are provided; if not, print an error and exit function
-    if not item_name or not item_type:
-        print("Error: 'displayName' and 'type' must be present in request_body.")
-        return None
+    if item_description:
+        request_body["description"] = item_description
+
+    if item_definition:
+        request_body["definition"] = item_definition
 
     # Initialize the REST client for the fabric service
     client = fabric.FabricRestClient()
     url = f"/v1/workspaces/{workspace_id}/items"
+    method = "post"
+    
+    # Determine the item to work with based on old_item_name or item_name
+    item_id = get_item_id(item_name=old_item_name or item_name, item_type=item_type, workspace=workspace_id)
 
-    # Retrieve the existing item ID if it exists
-    item_id = get_item_id(item_name=item_name, item_type=item_type, workspace=workspace_id)
-
-    # Determine the appropriate URL and HTTP method based on the presence of item_id
+    # Determine the appropriate action based on the item's existence and type
     if item_id is None:
         action = "created"
+    elif item_definition:
+        url = f"{url}/{item_id}/updateDefinition"
+        action = "definition updated"
+    elif (old_item_name or item_description):
+        url = f"{url}/{item_id}"
+        action = "updated"
+        method = "patch"
     else:
-        if item_type in ["Notebook", "Report", "SemanticModel", "SparkJobDefinition", "DataPipeline"]:
-            url = f"{url}/{item_id}/updateDefinition"
-            action = "replaced"
-        else:
-            return item_id
+        return item_id  # Item exists and doesn't need updating, so just return its ID
 
-    # Perform the API request
-    response = client.post(url, json=request_body)
+    # Perform the API request based on the method
+    response = call_api(url, method, request_body)
     status_code = response.status_code
+
 
     # Check the response status code to determine the outcome
     if status_code in (200, 201):
@@ -239,7 +331,7 @@ def create_or_replace_fabric_item(request_body, workspace=None):
     elif status_code == 202:
         # If status code indicates a pending operation, check its status
         try:
-            check_operation_status(response.headers['x-ms-operation-id'], client)
+            poll_operation_status(response.headers['x-ms-operation-id'])
         except Exception as e:
             print(f"Operation failed: {str(e)}")
             return None
@@ -248,14 +340,14 @@ def create_or_replace_fabric_item(request_body, workspace=None):
         print(f"Operation failed with status code: {status_code}")
         return None
 
-    # Ensure item_id is set
+    # Ensure item_id is set (in case of new item creation)
     if not item_id:
         item_id = get_item_id(item_name=item_name, item_type=item_type, workspace=workspace_id)
 
     return item_id
 
 
-def extract_item_name_and_type_from_path(parent_folder_path):
+def extract_item_name_and_type_from_path(parent_folder_path: str):
     """
     Extracts item name and object type from the parent folder name.
     The folder name should be in the format 'item_name.object_type'.
@@ -271,7 +363,7 @@ def extract_item_name_and_type_from_path(parent_folder_path):
     return item_name, object_type
 
 
-def create_lakehouse_if_not_exists(lh_name: str, workspace=None) -> str:
+def create_lakehouse_if_not_exists(lh_name: str, workspace: str=None) -> str:
     """
     Creates a lakehouse with the given name if it does not exist already.
 
@@ -284,12 +376,8 @@ def create_lakehouse_if_not_exists(lh_name: str, workspace=None) -> str:
         str: The ID of the lakehouse.
     """
     workspace_id = fabric.resolve_workspace_id(workspace)
-    request_body = {
-        "displayName": lh_name,
-        "type": "Lakehouse"
-    }
 
-    return create_or_replace_fabric_item(request_body, workspace_id)
+    return get_create_or_update_fabric_item(item_name = lh_name, item_type = "Lakehouse", workspace=workspace_id)
 
 
 def create_mount_point(abfss_path: str, mount_point: str = "/lakehouse/default") -> str:
@@ -343,10 +431,7 @@ def get_lakehouse_path(lakehouse_name: str, path_type: str = "spark", folder_typ
     if folder_type not in ["Tables", "Files"]:
         raise ValueError(f"Invalid folder type: {folder_type}.")
 
-    # Resolve the workspace ID
     workspace_id = fabric.resolve_workspace_id(workspace)
-
-    # Create the lakehouse if it does not exist
     lakehouse_id = create_lakehouse_if_not_exists(lakehouse_name, workspace_id)
 
     # Construct the path to the lakehouse
@@ -399,7 +484,7 @@ def get_delta_tables_in_lakehouse(lakehouse_name: str, workspace=None) -> list:
     return delta_tables
 
 
-def get_semantic_models(workspace=None) -> list:
+def get_semantic_models(workspace: str=None) -> list:
     """
     Retrieve IDs and display names of semantic models from a specified workspace.
 
@@ -421,7 +506,7 @@ def get_semantic_models(workspace=None) -> list:
     return model_info
 
 
-def does_semantic_model_exist(semantic_model_name: str, workspace=None) -> bool:
+def does_semantic_model_exist(semantic_model_name: str, workspace: str=None) -> bool:
     """
     Check if a semantic model with the given name exists in the specified workspace.
 

@@ -6,14 +6,13 @@ import time
 import pandas as pd
 
 from sempy import fabric
-from sempy.fabric.exceptions import FabricHTTPException
 
-from fabric_utils import (get_lakehouse_id, create_or_replace_fabric_item, get_item_id,
+from fabric_utils import (call_api, get_lakehouse_id, get_create_or_update_fabric_item, get_item_id,
                           extract_item_name_and_type_from_path, does_semantic_model_exist)
-from file_operations import encode_to_base64, get_file_content_as_base64
+from file_operations import get_file_content_as_base64
 
 
-def get_server_db(lakehouse_name: str, workspace=None) -> tuple:
+def get_server_db(lakehouse_name: str, workspace: str=None) -> tuple:
     """
     Retrieves the server and database details for a given lakehouse.
 
@@ -28,9 +27,10 @@ def get_server_db(lakehouse_name: str, workspace=None) -> tuple:
         Exception: If the request to get lakehouse details fails.
     """
     workspace_id = fabric.resolve_workspace_id(workspace)
-    client = fabric.FabricRestClient()
     lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id)
-    response = client.get(f"/v1/workspaces/{workspace_id}/lakehouses/{lakehouse_id}")
+    endpoint = f"/v1/workspaces/{workspace_id}/lakehouses/{lakehouse_id}"
+    
+    response = call_api(endpoint, 'get')
     
     if response.status_code == 200:
         response_json = response.json()
@@ -42,7 +42,7 @@ def get_server_db(lakehouse_name: str, workspace=None) -> tuple:
         raise Exception(f"Failed to get lakehouse details: {response.status_code}")
 
 
-def get_shared_expression(lakehouse_name: str, workspace=None) -> str:
+def get_shared_expression(lakehouse_name: str, workspace: str=None) -> str:
     """
     Generates the shared expression statement for a given lakehouse and its SQL endpoint.
 
@@ -53,7 +53,6 @@ def get_shared_expression(lakehouse_name: str, workspace=None) -> str:
     Returns:
         str: An M statement which can be used as the expression in the shared expression for a Direct Lake semantic model.
     """
-    # Resolve the workspace ID
     workspace_id = fabric.resolve_workspace_id(workspace)
     
     # Retrieve server and database details
@@ -65,7 +64,7 @@ def get_shared_expression(lakehouse_name: str, workspace=None) -> str:
     return m_statement
 
 
-def update_model_expression(dataset_name: str, lakehouse_name: str, workspace=None) -> None:
+def update_model_expression(dataset_name: str, lakehouse_name: str, workspace: str=None) -> None:
     """
     Update the expression in the semantic model to point to the specified lakehouse.
 
@@ -144,7 +143,7 @@ def update_definition_pbir(folder_path: str, dataset_id: str) -> None:
         raise Exception(f"An error occurred while updating the file '{file_path}': {str(e)}")
 
 
-def create_or_replace_semantic_model(model_path: str, workspace=None) -> None:
+def create_or_replace_semantic_model(model_path: str, workspace: str=None) -> None:
     """
     Create or replace a Power BI semantic model from a given path.
 
@@ -156,7 +155,6 @@ def create_or_replace_semantic_model(model_path: str, workspace=None) -> None:
         ValueError: If the model_path is invalid.
         Exception: For any other exceptions that might occur during the process.
     """
-    # Resolve the workspace_id from the workspace parameter
     workspace_id = fabric.resolve_workspace_id(workspace)
     
     # Validate input parameters
@@ -164,17 +162,20 @@ def create_or_replace_semantic_model(model_path: str, workspace=None) -> None:
         raise ValueError(f"The model path '{model_path}' does not exist or is not a directory.")
 
     try:
+        # Get item name and type
+        item_name, item_type = extract_item_name_and_type_from_path(model_path)
+
         # Prepare the request body based on the model path
-        request_body = create_powerbi_item_request_body(model_path)
+        model_definition = create_powerbi_item_definition(model_path)
 
         # Call the function to create or replace the fabric item in the workspace
-        create_or_replace_fabric_item(request_body, workspace_id)
+        get_create_or_update_fabric_item(item_name = item_name, item_type = item_type, item_defenition = model_definition, workspace = workspace_id)
 
     except Exception as e:
         raise Exception(f"An error occurred while creating or replacing the semantic model: {str(e)}")
 
 
-def create_or_replace_report_from_pbir(report_path: str, dataset_name: str, dataset_workspace=None, report_workspace=None) -> None:
+def create_or_replace_report_from_pbir(report_path: str, dataset_name: str, dataset_workspace: str=None, report_workspace: str=None) -> None:
     """
     Create or replace a Power BI report in service from PBIR and point it to a dataset.
 
@@ -188,7 +189,6 @@ def create_or_replace_report_from_pbir(report_path: str, dataset_name: str, data
         ValueError: If the report_path or dataset_name is invalid.
         Exception: For any other exceptions that might occur during the process.
     """
-    # Resolve the workspace_ids from the workspace parameters
     dataset_workspace_id = fabric.resolve_workspace_id(dataset_workspace)
     report_workspace_id = fabric.resolve_workspace_id(report_workspace)
     
@@ -205,108 +205,39 @@ def create_or_replace_report_from_pbir(report_path: str, dataset_name: str, data
         # Prepare the Power BI report definition
         update_definition_pbir(report_path, dataset_id)
 
+        # Get item name and type
+        item_name, item_type = extract_item_name_and_type_from_path(report_path)
+
         # Prepare the request body with the report name, type, and definition
-        request_body = create_powerbi_item_request_body(report_path)
+        report_definition = create_powerbi_item_definition(report_path)
 
         # Call the function to create or replace the fabric item
-        create_or_replace_fabric_item(request_body, report_workspace_id)
+        get_create_or_update_fabric_item(item_name = item_name, item_type = item_type, item_defenition = report_definition, workspace = report_workspace_id)
 
     except Exception as e:
         raise Exception(f"An error occurred while creating or replacing the report: {str(e)}")
 
 
-def create_or_replace_report_from_reportjson(report_name, dataset_name, report_json, theme_json=None, workspace=None):
+def create_powerbi_item_definition(parent_folder_path: str) -> dict:
     """
-    Create or replace a report from a report JSON definition.
+    Creates a request body for a Power BI item with Base64 encoded file contents.
+
+    This function generates a dictionary representing the item definition for Power BI.
+    It scans a specified folder and its subfolders for files to include in the definition,
+    encoding their contents in Base64. The request body includes:
+    - Files that start with 'definition.' and have a length greater than 11 characters
+    - All files in the parent folder and its subfolders, excluding certain patterns
 
     Args:
-        report_name (str): The name of the report.
-        dataset_name (str): The name of the dataset.
-        report_json (dict): The JSON definition of the report.
-        theme_json (dict, optional): The JSON definition of the theme. Defaults to None.
-        workspace (str, optional): The ID or name of the workspace where the report will be deployed. Defaults to the current workspace if not provided.
+        parent_folder_path (str): The path to the parent folder containing the files.
 
     Returns:
-        None
+        dict: A dictionary with a single key "parts" that contains a list of dictionaries,
+              each representing a file with its path, Base64 encoded payload, and payload type.
     """
-    
-    # Resolve the workspace_id from the workspace parameter
-    workspace_id = fabric.resolve_workspace_id(workspace)
-    
-    # Define the object type for the report
-    object_type = 'Report'
-
-    # Retrieve the dataset id associated with the dataset name
-    dataset_id = get_item_id(item_name=dataset_name, item_type='SemanticModel', workspace_id=workspace_id)
-    if dataset_id is None:
-        print(f"ERROR: The '{dataset_name}' semantic model does not exist.")
-        return
-
-    # Prepare the Power BI report definition
-    pbir_def = {
-        "version": "1.0",
-        "datasetReference": {
-            "byPath": None,
-            "byConnection": {
-                "connectionString": None,
-                "pbiServiceModelId": None,
-                "pbiModelVirtualServerName": "sobe_wowvirtualserver",
-                "pbiModelDatabaseName": dataset_id,
-                "name": "EntityDataSource",
-                "connectionType": "pbiServiceXmlaStyleLive"
-            }
-        }
-    }
-
-    # Initialize the parts list with the report definition
-    parts = [
-        {
-            "path": "report.json",
-            "payload": encode_to_base64(report_json),
-            "payloadType": "InlineBase64"
-        },
-        {
-            "path": "definition.pbir",
-            "payload": encode_to_base64(pbir_def),
-            "payloadType": "InlineBase64"
-        }
-    ]
-
-    # If a theme is provided, add it to the parts list
-    if theme_json:
-        theme_id = theme_json['payload']['blob']['displayName']
-        theme_path = f'StaticResources/SharedResources/BaseThemes/{theme_id}.json'
-        parts.append({
-            "path": theme_path,
-            "payload": encode_to_base64(theme_json),
-            "payloadType": "InlineBase64"
-        })
-
-    # Prepare the request body with the report name, type, and definition
-    request_body = {
-        'displayName': report_name,
-        'type': object_type,
-        'definition': {"parts": parts}
-    }
-
-    # Call the function to create or replace the fabric item
-    create_or_replace_fabric_item(request_body, workspace_id)
-
-
-def create_powerbi_item_request_body(parent_folder_path):
-    """Creates the request body for a Power BI item with Base64 encoded file contents."""
-    try:
-        item_name, object_type = extract_item_name_and_type_from_path(parent_folder_path)
-    except (FileNotFoundError, ValueError) as e:
-        raise e
-
-    request_body = {
-        "displayName": item_name,
-        "type": object_type,
-        "definition": {
+    item_definition = {
             "parts": []
         }
-    }
 
     # Check for 'definition.*' file immediately inside the parent folder
     for file_name in os.listdir(parent_folder_path):
@@ -314,7 +245,7 @@ def create_powerbi_item_request_body(parent_folder_path):
             definition_file_path = os.path.join(parent_folder_path, file_name)
             if os.path.isfile(definition_file_path):
                 encoded_content = get_file_content_as_base64(definition_file_path)
-                request_body["definition"]["parts"].append({
+                item_definition["parts"].append({
                     "path": file_name,
                     "payload": encoded_content,
                     "payloadType": "InlineBase64"
@@ -340,13 +271,13 @@ def create_powerbi_item_request_body(parent_folder_path):
             encoded_content = get_file_content_as_base64(file_path)
 
             # Add the file details to the parts list in the request body
-            request_body["definition"]["parts"].append({
+            item_definition["parts"].append({
                 "path": relative_path,
                 "payload": encoded_content,
                 "payloadType": "InlineBase64"
             })
 
-    return request_body
+    return item_definition
 
 
 def start_enhanced_refresh(
@@ -379,7 +310,6 @@ def start_enhanced_refresh(
     Raises:
         FabricException: If the refresh fails or encounters an error.
     """
-    # Resolve the workspace_id from the workspace parameter
     workspace_id = fabric.resolve_workspace_id(workspace)
     
     objects_to_refresh = convert_to_json(refresh_objects)
@@ -396,7 +326,7 @@ def start_enhanced_refresh(
     )
 
 
-def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, workspace=None) -> pd.DataFrame:
+def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, workspace: str=None) -> pd.DataFrame:
     """Get enhanced refresh details for a given dataset and refresh request ID.
 
     Args:
@@ -407,7 +337,6 @@ def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, wor
     Returns:
         pd.DataFrame: A dataframe with the refresh details, messages, and time taken in seconds.
     """
-    # Resolve the workspace_id from the workspace parameter
     workspace_id = fabric.resolve_workspace_id(workspace)
     
     # Get the refresh execution details from fabric
@@ -442,7 +371,7 @@ def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, wor
     return df.merge(df_msg, how='outer', on='dataset')
 
 
-def cancel_enhanced_refresh(request_id: str, dataset_id: str, workspace=None) -> dict:
+def cancel_enhanced_refresh(request_id: str, dataset_id: str, workspace: str=None) -> dict:
     """Cancel an enhanced refresh request for a Power BI dataset.
 
     Args:
@@ -456,22 +385,13 @@ def cancel_enhanced_refresh(request_id: str, dataset_id: str, workspace=None) ->
     Raises:
         FabricHTTPException: If the request fails with a non-200 status code.
     """
-    
-    # Resolve the workspace_id from the workspace parameter
     workspace_id = fabric.resolve_workspace_id(workspace)
     
-    # Create a Power BI REST client object
-    client = fabric.PowerBIRestClient()
-
     # Construct the endpoint URL for the delete request
     endpoint = f"v1.0/myorg/groups/{workspace_id}/datasets/{dataset_id}/refreshes/{request_id}"
 
-    # Send the delete request and get the response
-    response = client.delete(endpoint)
-
-    # Check the status code and raise an exception if not 200
-    if response.status_code != 200:
-        raise FabricHTTPException(response)
+    # Send the delete request using call_api
+    response = call_api(endpoint, 'delete', client_type='powerbi')
 
     # Return the JSON response as a dictionary
     return response.json()

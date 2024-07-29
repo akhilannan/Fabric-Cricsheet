@@ -5,11 +5,11 @@ import yaml
 
 from sempy import fabric
 
-from fabric_utils import create_or_replace_fabric_item, get_item_id, get_lakehouse_id
+from fabric_utils import call_api, get_create_or_update_fabric_item, get_item_id, get_lakehouse_id
 from file_operations import encode_to_base64
 
 
-def update_sparkcompute(environment_name, file_path, workspace=None):
+def update_sparkcompute(environment_name: str, file_path: str, workspace: str=None) -> str:
     """
     Updates the SparkCompute configuration for the specified environment.
 
@@ -22,7 +22,6 @@ def update_sparkcompute(environment_name, file_path, workspace=None):
         str: Success message or error details.
     """
     try:
-        client = fabric.FabricRestClient()
         workspace_id = fabric.resolve_workspace_id(workspace)
         environment_id = get_item_id(environment_name, "Environment", workspace_id)
         if environment_id:
@@ -31,7 +30,7 @@ def update_sparkcompute(environment_name, file_path, workspace=None):
             json_content = json.dumps(yaml_content, indent=2)
             request_body = json.loads(json_content)
             endpoint = f"v1/workspaces/{workspace_id}/environments/{environment_id}/staging/sparkcompute"
-            response = client.patch(endpoint, json=request_body)
+            response = call_api(endpoint, 'patch', body=request_body)
             if response.status_code == 200:
                 return "SparkCompute updated successfully."
             else:
@@ -42,7 +41,7 @@ def update_sparkcompute(environment_name, file_path, workspace=None):
         return f"Error: {str(e)}"
 
 
-def publish_staging_environment(environment_name, workspace=None):
+def publish_staging_environment(environment_name: str, workspace: str=None) -> str:
     """
     Initiates the publishing process for the specified environment.
 
@@ -54,12 +53,11 @@ def publish_staging_environment(environment_name, workspace=None):
         str: Publish status message.
     """
     try:
-        client = fabric.FabricRestClient()
         workspace_id = fabric.resolve_workspace_id(workspace)
         environment_id = get_item_id(environment_name, "Environment", workspace_id)
         if environment_id:
             endpoint = f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/publish"
-            response = client.post(endpoint)
+            response = call_api(endpoint, 'post')
             if response.status_code == 200:
                 print("Publish started...")
                 while get_publish_state(environment_name, workspace_id) == "running":
@@ -73,64 +71,32 @@ def publish_staging_environment(environment_name, workspace=None):
         return f"Error: {str(e)}"
 
 
-def get_publish_state(environment_name, workspace=None) -> str:
+def get_publish_state(environment_name: str, workspace: str=None) -> str:
     """
     Retrieves the current publish state of the specified environment.
 
     Args:
-        environment_name (str): Name of the target environment.
-        workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
+        environment_name: Name of the target environment.
+        workspace: The name or ID of the workspace. If not provided, it uses the current workspace ID.
 
     Returns:
-        str: Current publish state (e.g., "running", "success", "failed", etc).
+        Current publish state (e.g., "running", "success", "failed", etc).
     """
     try:
-        client = fabric.FabricRestClient()
         workspace_id = fabric.resolve_workspace_id(workspace)
         environment_id = get_item_id(environment_name, "Environment", workspace_id)
         if environment_id:
             endpoint = f"/v1/workspaces/{workspace_id}/environments/{environment_id}"
-            response = client.get(endpoint).json()
-            publish_details = response.get('properties', {}).get('publishDetails', {})
+            response = call_api(endpoint, 'get')
+            publish_details = response.json().get('properties', {}).get('publishDetails', {})
             return publish_details.get('state', "Unknown")
-        else:
-            return "Environment not found."
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-
-def upload_file_to_environment(environment_name, file_path, workspace=None) -> str:
-    """
-    Uploads a library file to the specified environment.
-
-    Args:
-        environment_name (str): Name of the target environment.
-        file_path (str): Path to the library file on the local system.
-        workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
-
-    Returns:
-        str: Success message or error details.
-    """
-    try:
-        client = fabric.FabricRestClient()
-        workspace_id = fabric.resolve_workspace_id(workspace)
-        environment_id = get_item_id(environment_name, "Environment", workspace_id)
-        if environment_id:
-            url = f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/libraries"
-            with open(file_path, 'rb') as file:
-                files = {'file': file}
-                response = client.post(url, files=files)
-                if response.status_code == 200:
-                    return "Library uploaded successfully."
-                else:
-                    return f"Error uploading library: {response.text}"
         else:
             return "Environment not found."
     except Exception as e:
         return f"Error: {str(e)}"
     
 
-def upload_files_to_environment(environment_name, file_paths, workspace=None) -> dict:
+def upload_files_to_environment(environment_name: str, file_paths: str, workspace: str=None) -> dict:
     """
     Uploads one or more library files to the specified environment.
 
@@ -148,16 +114,15 @@ def upload_files_to_environment(environment_name, file_paths, workspace=None) ->
 
     results = {}
     try:
-        client = fabric.FabricRestClient()
         workspace_id = fabric.resolve_workspace_id(workspace)
         environment_id = get_item_id(environment_name, "Environment", workspace_id)
         if environment_id:
-            url = f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/libraries"
+            endpoint = f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/libraries"
             for file_path in file_paths:
                 try:
                     with open(file_path, 'rb') as file:
                         files = {'file': file}
-                        response = client.post(url, files=files)
+                        response = call_api(endpoint, method='post', files=files)
                         if response.status_code == 200:
                             results[file_path] = "Library uploaded successfully."
                         else:
@@ -171,7 +136,7 @@ def upload_files_to_environment(environment_name, file_paths, workspace=None) ->
     return results
 
 
-def create_and_publish_spark_environment(environment_name, yml_path, py_path, workspace=None):
+def create_and_publish_spark_environment(environment_name: str, yml_path: str, py_path: str, workspace: str=None):
     """
     Creates or replaces a Spark environment using the specified YAML and Python files.
 
@@ -181,17 +146,11 @@ def create_and_publish_spark_environment(environment_name, yml_path, py_path, wo
         py_path (str): Path to the fabric_utils.py file.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
     """
-    item_type = "Environment"
-    request_body = {
-        'displayName': environment_name,
-        'type': item_type
-    }
-    
     # Resolve workspace ID
     workspace_id = fabric.resolve_workspace_id(workspace)
     
     # Create or replace the fabric item
-    create_or_replace_fabric_item(request_body, workspace_id)
+    get_create_or_update_fabric_item(item_name = environment_name, item_type = "Environment", workspace=workspace_id)
     
     # Upload files to the environment
     print(upload_files_to_environment(environment_name, py_path, workspace_id))
@@ -203,7 +162,7 @@ def create_and_publish_spark_environment(environment_name, yml_path, py_path, wo
     print(publish_staging_environment(environment_name, workspace_id))
 
 
-def create_or_replace_notebook_from_ipynb(notebook_path, default_lakehouse_name=None, environment_name=None, replacements=None, workspace=None):
+def create_or_replace_notebook_from_ipynb(notebook_path: str, default_lakehouse_name: str=None, environment_name: str=None, replacements: dict=None, workspace: str=None) -> str:
     """
     Create or replace a notebook in the Fabric workspace.
 
@@ -217,11 +176,8 @@ def create_or_replace_notebook_from_ipynb(notebook_path, default_lakehouse_name=
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
 
     Returns:
-        None
+        ID of the created/replaced Notebook
     """
-    # Define the object type for the notebook.
-    object_type = 'Notebook'
-
     # Resolve the workspace ID
     workspace_id = fabric.resolve_workspace_id(workspace)
 
@@ -268,10 +224,7 @@ def create_or_replace_notebook_from_ipynb(notebook_path, default_lakehouse_name=
         notebook_json['metadata']['dependencies'].update(new_environment_data)
 
     # Construct the request body with the notebook details.
-    request_body = {
-        "displayName": notebook_name,
-        "type": object_type,
-        "definition": {
+    notebook_definition = {
             "format": "ipynb",
             "parts": [
                 {
@@ -281,7 +234,6 @@ def create_or_replace_notebook_from_ipynb(notebook_path, default_lakehouse_name=
                 }
             ]
         }
-    }
 
     # Call the function to create or replace the notebook item in the workspace.
-    create_or_replace_fabric_item(request_body, workspace_id)
+    get_create_or_update_fabric_item(item_name=notebook_name, item_type='Notebook', item_definition=notebook_definition, workspace=workspace_id)

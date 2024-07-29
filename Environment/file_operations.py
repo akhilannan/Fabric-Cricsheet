@@ -94,7 +94,7 @@ def unzip_parallel(lakehouse: str, zip_relative_path: str, extract_relative_path
         print(f"An error occurred: {e}")
 
 
-def download_data(url, lakehouse, path, workspace=None):
+def download_data(url: str, lakehouse: str, path: str, workspace: str=None) -> str:
     """
     Downloads a file from the given URL and saves it to the specified path in the lakehouse.
 
@@ -187,7 +187,7 @@ def decode_from_base64(encoded_data):
     return decoded_json
 
 
-def delete_folder_from_lakehouse(lakehouse, path, workspace=None):
+def delete_folder_from_lakehouse(lakehouse: str, path: str, workspace: str=None) -> None:
     """
     Deletes a folder from the specified lakehouse.
 

@@ -368,7 +368,7 @@ def optimize_and_vacuum_items(items_to_optimize_vacuum: str | dict, retain_hours
     print("Optimization and vacuum completed.")
 
 
-def prepare_optimization_items(items_to_optimize_vacuum, retain_hours=None):
+def prepare_optimization_items(items_to_optimize_vacuum: dict, retain_hours: int=None) -> list:
     """
     Prepares a list of items for optimizing and vacuuming tables in a lakehouse.
 
