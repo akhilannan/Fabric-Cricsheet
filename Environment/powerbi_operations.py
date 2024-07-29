@@ -169,7 +169,7 @@ def create_or_replace_semantic_model(model_path: str, workspace: str=None) -> No
         model_definition = create_powerbi_item_definition(model_path)
 
         # Call the function to create or replace the fabric item in the workspace
-        get_create_or_update_fabric_item(item_name = item_name, item_type = item_type, item_defenition = model_definition, workspace = workspace_id)
+        get_create_or_update_fabric_item(item_name = item_name, item_type = item_type, item_definition = model_definition, workspace = workspace_id)
 
     except Exception as e:
         raise Exception(f"An error occurred while creating or replacing the semantic model: {str(e)}")
@@ -212,7 +212,7 @@ def create_or_replace_report_from_pbir(report_path: str, dataset_name: str, data
         report_definition = create_powerbi_item_definition(report_path)
 
         # Call the function to create or replace the fabric item
-        get_create_or_update_fabric_item(item_name = item_name, item_type = item_type, item_defenition = report_definition, workspace = report_workspace_id)
+        get_create_or_update_fabric_item(item_name = item_name, item_type = item_type, item_definition = report_definition, workspace = report_workspace_id)
 
     except Exception as e:
         raise Exception(f"An error occurred while creating or replacing the report: {str(e)}")

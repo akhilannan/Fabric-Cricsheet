@@ -119,16 +119,17 @@ def upload_files_to_environment(environment_name: str, file_paths: str, workspac
         if environment_id:
             endpoint = f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/libraries"
             for file_path in file_paths:
+                file_name = os.path.basename(file_path)
                 try:
                     with open(file_path, 'rb') as file:
                         files = {'file': file}
                         response = call_api(endpoint, method='post', files=files)
                         if response.status_code == 200:
-                            results[file_path] = "Library uploaded successfully."
+                            results[file_name] = "Library uploaded successfully."
                         else:
-                            results[file_path] = f"Error uploading library: {response.text}"
+                            results[file_name] = f"Error uploading library: {response.text}"
                 except Exception as e:
-                    results[file_path] = f"Error: {str(e)}"
+                    results[file_name] = f"Error: {str(e)}"
         else:
             return {"error": "Environment not found."}
     except Exception as e:
