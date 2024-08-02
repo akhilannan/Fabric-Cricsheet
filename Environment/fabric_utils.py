@@ -299,8 +299,7 @@ def get_create_or_update_fabric_item(item_name: str, item_type: str, item_defini
     if item_definition:
         request_body["definition"] = item_definition
 
-    # Initialize the REST client for the fabric service
-    client = fabric.FabricRestClient()
+    # Initialize URL and method
     url = f"/v1/workspaces/{workspace_id}/items"
     method = "post"
     
@@ -482,46 +481,3 @@ def get_delta_tables_in_lakehouse(lakehouse_name: str, workspace=None) -> list:
         delta_tables = []
 
     return delta_tables
-
-
-def get_semantic_models(workspace: str=None) -> list:
-    """
-    Retrieve IDs and display names of semantic models from a specified workspace.
-
-    Args:
-        workspace (str): The name or ID of the workspace. If not provided, it uses the current workspace ID.
-
-    Returns:
-        List[dict]: A list of dictionaries with 'id' and 'displayName' of the semantic models in the specified workspace.
-    """
-    try:
-        workspace_id = fabric.resolve_workspace_id(workspace)
-        semantic_models = get_all_items_with_pagination(f"/v1/workspaces/{workspace_id}/semanticModels")
-        
-        model_info = [{'id': model['id'], 'displayName': model['displayName']} for model in semantic_models]
-    except Exception as e:
-        print(e)
-        model_info = []
-
-    return model_info
-
-
-def does_semantic_model_exist(semantic_model_name: str, workspace: str=None) -> bool:
-    """
-    Check if a semantic model with the given name exists in the specified workspace.
-
-    Args:
-        semantic_model_name (str): The name of the semantic model to check.
-        workspace (str): The name or ID of the workspace. If not provided, it uses the current workspace ID.
-
-    Returns:
-        bool: True if the semantic model exists, False otherwise.
-    """
-    try:
-        semantic_models = get_semantic_models(workspace)
-        exists = any(model['displayName'] == semantic_model_name for model in semantic_models)
-    except Exception as e:
-        print(e)
-        exists = False
-
-    return exists

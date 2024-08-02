@@ -3,12 +3,10 @@ import json
 import os
 import time
 
-import pandas as pd
-
 from sempy import fabric
 
 from fabric_utils import (call_api, get_lakehouse_id, get_create_or_update_fabric_item, get_item_id,
-                          extract_item_name_and_type_from_path, does_semantic_model_exist)
+                          extract_item_name_and_type_from_path)
 from file_operations import get_file_content_as_base64
 
 
@@ -281,7 +279,7 @@ def create_powerbi_item_definition(parent_folder_path: str) -> dict:
 
 
 def start_enhanced_refresh(
-    dataset_name: str,
+    semantic_model_name: str,
     workspace=None,
     refresh_objects: str = "All",
     refresh_type: str = "full",
@@ -291,84 +289,100 @@ def start_enhanced_refresh(
     apply_refresh_policy: bool = False,
     effective_date: datetime.date = datetime.date.today(),
 ) -> str:
-    """Starts an enhanced refresh of a dataset.
+    """Starts an enhanced refresh of a semantic model.
 
     Args:
-        dataset_name (str): The name of the dataset to refresh.
-        workspace (str, optional): The ID or name of the workspace where the dataset is located. Defaults to the current workspace if not provided.
-        refresh_objects (str, optional): The objects to refresh in the dataset. Can be "All" or a list of object names. Defaults to "All".
+        semantic_model_name (str): The name of the semantic model to refresh.
+        workspace (str, optional): The ID or name of the workspace where the semantic model is located. Defaults to the current workspace if not provided.
+        refresh_objects (str, optional): The objects to refresh in the semantic model. Can be "All" or a list of object names. Defaults to "All".
         refresh_type (str, optional): The type of refresh to perform. Can be "full" or "incremental". Defaults to "full".
         commit_mode (str, optional): The commit mode to use for the refresh. Can be "transactional" or "streaming". Defaults to "transactional".
         max_parallelism (int, optional): The maximum number of parallel threads to use for the refresh. Defaults to 10.
         retry_count (int, optional): The number of times to retry the refresh in case of failure. Defaults to 0.
-        apply_refresh_policy (bool, optional): Whether to apply the refresh policy defined in the dataset. Defaults to False.
+        apply_refresh_policy (bool, optional): Whether to apply the refresh policy defined in the semantic model. Defaults to False.
         effective_date (datetime.date, optional): The date to use for the refresh. Defaults to today.
 
     Returns:
         str: The refresh request ID.
 
     Raises:
-        FabricException: If the refresh fails or encounters an error.
+        Exception: If the refresh fails or encounters an error.
     """
     workspace_id = fabric.resolve_workspace_id(workspace)
-    
+    semantic_model_id = get_item_id(item_name=semantic_model_name, item_type='SemanticModel', workspace=workspace_id)
+
+    # Convert refresh objects to JSON format
     objects_to_refresh = convert_to_json(refresh_objects)
-    return fabric.refresh_dataset(
-        workspace=workspace_id,
-        dataset=dataset_name,
-        objects=objects_to_refresh,
-        refresh_type=refresh_type,
-        max_parallelism=max_parallelism,
-        commit_mode=commit_mode,
-        retry_count=retry_count,
-        apply_refresh_policy=apply_refresh_policy,
-        effective_date=effective_date,
+
+    # Prepare the request body
+    request_body = {
+        "type": refresh_type,
+        "commitMode": commit_mode,
+        "maxParallelism": max_parallelism,
+        "retryCount": retry_count,
+        "applyRefreshPolicy": apply_refresh_policy,
+        "effectiveDate": effective_date.isoformat(),
+    }
+
+    # Add objects to refresh if specified
+    if objects_to_refresh:
+        request_body["objects"] = objects_to_refresh
+
+    # Make the API call
+    response = call_api(
+        url=f"/v1.0/myorg/groups/{workspace_id}/datasets/{semantic_model_id}/refreshes",
+        method="POST",
+        body=request_body,
+        client_type="powerbi"
     )
 
+    # Extract the request ID from the Location header
+    request_id = response.headers.get("Location").split("/")[-1]
 
-def get_enhanced_refresh_details(dataset_name: str, refresh_request_id: str, workspace: str=None) -> pd.DataFrame:
-    """Get enhanced refresh details for a given dataset and refresh request ID.
+    return request_id
+
+
+def get_enhanced_refresh_details(semantic_model_name: str, refresh_request_id: str, workspace: str = None) -> dict:
+    """Gets the details of an enhanced refresh operation for a dataset.
 
     Args:
-        dataset_name (str): The name of the dataset.
+        semantic_model_name (str): The name of the semantic model.
         refresh_request_id (str): The ID of the refresh request.
-        workspace (str, optional): The ID or name of the workspace. Defaults to the current workspace if not provided.
+        workspace (str, optional): The ID or name of the workspace where the dataset is located. Defaults to None.
 
     Returns:
-        pd.DataFrame: A dataframe with the refresh details, messages, and time taken in seconds.
+        dict: The details of the refresh operation with an added 'duration_in_sec' key.
+
+    Raises:
+        Exception: If the operation fails or encounters an error.
     """
     workspace_id = fabric.resolve_workspace_id(workspace)
-    
-    # Get the refresh execution details from fabric
-    refresh_details = fabric.get_refresh_execution_details(workspace=workspace_id, dataset=dataset_name, refresh_request_id=refresh_request_id)
-    
-    # Create a dataframe with the refresh details
-    df = pd.DataFrame({
-        'workspace': [workspace_id],
-        'dataset': [dataset_name],
-        'start_time': [refresh_details.start_time],
-        'end_time': [refresh_details.end_time if refresh_details.end_time is not None else None],
-        'status': [refresh_details.status],
-        'extended_status': [refresh_details.extended_status],
-        'number_of_attempts': [refresh_details.number_of_attempts]
-    })
+    semantic_model_id = get_item_id(item_name=semantic_model_name, item_type='SemanticModel', workspace=workspace_id)
 
-    # Calculate the time taken in seconds and add it as a new column
-    df['duration_in_sec'] = (df['end_time'].fillna(df['start_time']) - df['start_time']).dt.total_seconds()
-    df['duration_in_sec'] = df['duration_in_sec'].astype(int)
-    
-    # Convert the start_time and end_time columns to strings with the date format
-    df['start_time'] = df['start_time'].astype(str).str.slice(0, 16)
-    df['end_time'] = df['end_time'].astype(str).str.slice(0, 16)
-    
-    # Create a dataframe with the refresh messages
-    df_msg = pd.DataFrame(refresh_details.messages)
-    
-    # Add the dataset column to df_msg
-    df_msg = df_msg.assign(dataset=dataset_name)
-    
-    # Merge the dataframes on the dataset column and return the result
-    return df.merge(df_msg, how='outer', on='dataset')
+    # Make the API call
+    response = call_api(
+        url=f"/v1.0/myorg/groups/{workspace_id}/datasets/{semantic_model_id}/refreshes/{refresh_request_id}",
+        method="GET",
+        client_type="powerbi"
+    )
+
+    # Parse the response
+    refresh_details = response.json()
+
+    # Convert startTime to a timezone-aware datetime object
+    tz_info = datetime.timezone.utc
+    start_time = datetime.datetime.fromisoformat(refresh_details["startTime"].replace("Z", "+00:00")).replace(tzinfo=tz_info)
+
+    # Determine end_time with a default of the current UTC time if not provided
+    end_time = (
+        datetime.datetime.fromisoformat(refresh_details["endTime"].replace("Z", "+00:00")).replace(tzinfo=tz_info)
+        if "endTime" in refresh_details
+        else datetime.datetime.now(tz=tz_info)
+    )
+
+    refresh_details["duration_in_sec"] = round((end_time - start_time).total_seconds())
+
+    return refresh_details
 
 
 def cancel_enhanced_refresh(request_id: str, dataset_id: str, workspace: str=None) -> dict:
@@ -429,7 +443,7 @@ def refresh_and_wait(
     valid_datasets = [
         dataset
         for dataset in dataset_list
-        if does_semantic_model_exist(dataset, workspace_id)
+        if get_item_id(dataset, 'SemanticModel', workspace_id)
     ]
 
     # Start the enhanced refresh for the valid datasets
@@ -461,15 +475,14 @@ def refresh_and_wait(
     while True:
         for dataset, request_id in request_ids.copy().items():
             # Get the status and details of the current request
-            request_status_df = get_enhanced_refresh_details(dataset, request_id, workspace_id)
-            request_status = request_status_df["status"].iloc[0]
+            refresh_details = get_enhanced_refresh_details(dataset, request_id, workspace_id)
+            request_status = refresh_details["status"]
 
             # If the request is not unknown, print the details, store the status in the dictionary, and remove it from the request_ids
             if request_status != "Unknown":
                 if logging_lakehouse:
-                    duration = request_status_df["duration_in_sec"].iloc[0]
-                    msg = request_status_df["Message"].iloc[0]
-                    msg = None if pd.isna(msg) else msg
+                    duration = refresh_details.get("duration_in_sec", None)
+                    msg = refresh_details.get("Message", None)
                     insert_or_update_job_table(
                         lakehouse_name=logging_lakehouse,
                         job_name=dataset,
@@ -480,7 +493,7 @@ def refresh_and_wait(
                         job_category=job_category,
                         message=msg,
                     )
-                print(request_status_df)
+                print(refresh_details)
                 request_status_dict[dataset] = request_status  # Store the status in the dictionary
                 del request_ids[dataset]
 
