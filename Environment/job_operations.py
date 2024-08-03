@@ -5,11 +5,10 @@ import uuid
 from pyspark.sql import functions as F
 
 import notebookutils
-from sempy import fabric
 
 from delta_table_operations import (read_delta_table, create_or_replace_delta_table,
                                      upsert_delta_table, create_spark_dataframe)
-from fabric_utils import call_api, get_item_id, get_lakehouse_id
+from fabric_utils import call_api, get_item_id, get_lakehouse_id, resolve_workspace_id
 
 
 def get_job_id(lakehouse: str = None, table: str = None, job_name: str = None) -> str:
@@ -158,25 +157,26 @@ def execute_and_log(function: callable, log_lakehouse: str = None, job_name: str
     return result
 
 
-def get_lakehouse_job_status(operation_id: str, lakehouse_name: str, workspace: str=None) -> dict:
+def get_lakehouse_job_status(operation_id: str, lakehouse_name: str, workspace: str=None, client=None) -> dict:
     """Returns the status of a lakehouse job given its operation ID and lakehouse name.
 
     Args:
         operation_id (str): The ID of the lakehouse job operation.
         lakehouse_name (str): The name of the lakehouse.
         workspace (str, optional): The name or ID of the workspace. Defaults to the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         dict: A dictionary containing the operation status.
     """
 
     # Resolve the workspace ID
-    workspace_id = fabric.resolve_workspace_id(workspace)
+    workspace_id = resolve_workspace_id(workspace, client=client)
 
     # Get the lakehouse ID
-    lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id)
+    lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id, client=client)
     
-    return get_item_job_instance(item_id=lakehouse_id, job_instance_id=operation_id, workspace_id=workspace_id)
+    return get_item_job_instance(item_id=lakehouse_id, job_instance_id=operation_id, workspace_id=workspace_id, client=client)
 
 
 def execute_with_retries(func: callable, *args: any, max_retries: int=5, delay: int=10, **kwargs: any) -> None:
@@ -208,7 +208,7 @@ def execute_with_retries(func: callable, *args: any, max_retries: int=5, delay: 
                 return
 
 
-def start_on_demand_job(item_id: str, job_type: str, execution_data=None, workspace_id: str=None) -> str:
+def start_on_demand_job(item_id: str, job_type: str, execution_data=None, workspace_id: str=None, client=None) -> str:
     """
     Start an on-demand job for an item in a workspace and return the job instance ID.
 
@@ -217,11 +217,12 @@ def start_on_demand_job(item_id: str, job_type: str, execution_data=None, worksp
         job_type (str): The type of job to run (e.g., TableMaintenance).
         execution_data (dict, optional): The data needed for job execution. Defaults to None.
         workspace_id (str, optional): The ID of the workspace. If not provided, it uses the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         str: The job instance ID.
     """
-    workspace_id = fabric.resolve_workspace_id(workspace_id)
+    workspace_id = resolve_workspace_id(workspace_id, client=client)
     endpoint = f"/v1/workspaces/{workspace_id}/items/{item_id}/jobs/instances?jobType={job_type}"
     
     # Prepare payload
@@ -231,7 +232,7 @@ def start_on_demand_job(item_id: str, job_type: str, execution_data=None, worksp
 
     try:
         # Start the job
-        response = call_api(endpoint, 'post', body=payload)
+        response = call_api(endpoint, 'post', body=payload, client=client)
         
         # Extract job instance ID from response headers
         job_instance_id = response.headers["Location"].split("/")[-1]
@@ -243,31 +244,32 @@ def start_on_demand_job(item_id: str, job_type: str, execution_data=None, worksp
         return None
 
 
-def get_item_job_instance(item_id: str, job_instance_id: str, workspace_id: str=None) -> dict:
+def get_item_job_instance(item_id: str, job_instance_id: str, workspace_id: str=None, client=None) -> dict:
     """
     Get the status of a job instance for an item in a workspace.
 
     Args:
         item_id (str): The ID of the item.
         job_instance_id (str): The ID of the job instance.
-        workspace_id (str, optional): The ID of the workspace. If not provided, it resolves using fabric.resolve_workspace_id.
+        workspace_id (str, optional): The ID of the workspace. If not provided, it resolves using resolve_workspace_id.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         dict: The response from the job status API call.
     """
-    workspace_id = fabric.resolve_workspace_id(workspace_id)
+    workspace_id = resolve_workspace_id(workspace_id, client=client)
     endpoint = f"/v1/workspaces/{workspace_id}/items/{item_id}/jobs/instances/{job_instance_id}"
 
     try:
         # Get the job status
-        response = call_api(endpoint, 'get')
+        response = call_api(endpoint, 'get', client=client)
         return response.json()
     except Exception as e:
         print(f"Error fetching job status: {e}")
         return None
 
 
-def run_on_demand_job_and_wait(item_id: str, job_type: str, execution_data=None, workspace_id: str=None) -> dict:
+def run_on_demand_job_and_wait(item_id: str, job_type: str, execution_data=None, workspace_id: str=None, client=None) -> dict:
     """
     Run an on-demand job for an item in a workspace and wait for its completion.
 
@@ -276,14 +278,15 @@ def run_on_demand_job_and_wait(item_id: str, job_type: str, execution_data=None,
         job_type (str): The type of job to run (e.g., TableMaintenance).
         execution_data (dict, optional): The data needed for job execution. Defaults to None.
         workspace_id (str, optional): The ID of the workspace. If not provided, it uses the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         dict: The response from the job status API call.
     """
-    workspace_id = fabric.resolve_workspace_id(workspace_id)
+    workspace_id = resolve_workspace_id(workspace_id, client=client)
 
     # Call the function to start the job and get the job instance ID
-    job_instance_id = start_on_demand_job(item_id, job_type, execution_data, workspace_id)
+    job_instance_id = start_on_demand_job(item_id, job_type, execution_data, workspace_id, client=client)
     
     if not job_instance_id:
         print("Failed to start the job.")
@@ -292,7 +295,7 @@ def run_on_demand_job_and_wait(item_id: str, job_type: str, execution_data=None,
     # Polling for job completion
     print(f"{job_type} job triggered. Waiting for completion...")
     while True:
-        job_status = get_item_job_instance(item_id, job_instance_id, workspace_id)
+        job_status = get_item_job_instance(item_id, job_instance_id, workspace_id, client=client)
         if not job_status:
             print("Error fetching job status.")
             return None
@@ -314,7 +317,7 @@ def run_on_demand_job_and_wait(item_id: str, job_type: str, execution_data=None,
     return job_status
     
 
-def run_notebook_job(notebook_name, wait_for_completion=False, workspace: str=None):
+def run_notebook_job(notebook_name, wait_for_completion=False, workspace: str=None, client=None):
     """
     Runs a notebook job using the specified notebook name and workspace.
 
@@ -322,25 +325,21 @@ def run_notebook_job(notebook_name, wait_for_completion=False, workspace: str=No
     - notebook_name (str): The name of the notebook to be run.
     - wait_for_completion (bool, optional): Whether to wait for the job to complete. Defaults to False.
     - workspace (str, optional): The name or ID of the workspace where the notebook is located. Defaults to the current workspace ID.
+    - client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
     Job status if waiting for completion, otherwise None.
     """
-    # Define the job type
     job_type = 'RunNotebook'
-    
-    # Resolve the workspace ID
-    workspace_id = fabric.resolve_workspace_id(workspace)
-    
-    # Get the notebook ID
-    notebook_id = get_item_id(notebook_name, 'Notebook', workspace_id)
+    workspace_id = resolve_workspace_id(workspace, client=client)
+    notebook_id = get_item_id(notebook_name, 'Notebook', workspace_id, client=client)
     
     if wait_for_completion:
         # Run the notebook job and wait for completion
-        return run_on_demand_job_and_wait(item_id=notebook_id, job_type=job_type, workspace_id=workspace_id)
+        return run_on_demand_job_and_wait(item_id=notebook_id, job_type=job_type, workspace_id=workspace_id, client=client)
     else:
         # Start the notebook job without waiting for completion
-        job_instance_id = start_on_demand_job(item_id=notebook_id, job_type=job_type, workspace_id=workspace_id)
+        job_instance_id = start_on_demand_job(item_id=notebook_id, job_type=job_type, workspace_id=workspace_id, client=client)
         if job_instance_id:
             print(f"{job_type} job triggered with job instance ID: {job_instance_id}. Check the run details from Monitoring Hub.")
         else:

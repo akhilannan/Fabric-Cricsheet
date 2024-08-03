@@ -8,9 +8,8 @@ from pyspark.sql import DataFrame, SparkSession, functions as F
 from delta.tables import DeltaTable
 
 import notebookutils
-from sempy import fabric
 
-from fabric_utils import get_lakehouse_id, get_lakehouse_path, get_delta_tables_in_lakehouse
+from fabric_utils import get_lakehouse_id, get_lakehouse_path, get_delta_tables_in_lakehouse, resolve_workspace_id
 
 
 spark = SparkSession.builder.getOrCreate()
@@ -214,7 +213,7 @@ def compare_row_count(table1_lakehouse: str, table1_name: str, table2_lakehouse:
             print(f"Cricsheet has {row_count_2 - row_count_1} more matches added")
 
 
-def optimize_and_vacuum_table_api(lakehouse_name: str, table_name: str, workspace=None) -> str:
+def optimize_and_vacuum_table_api(lakehouse_name: str, table_name: str, workspace=None, client=None) -> str:
     """
     Optimize and vacuum a table in a lakehouse.
 
@@ -222,6 +221,7 @@ def optimize_and_vacuum_table_api(lakehouse_name: str, table_name: str, workspac
         lakehouse_name (str): The name of the lakehouse.
         table_name (str): The name of the table.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         Optional[str]: The job instance ID of the job, or None if an error occurs.
@@ -237,13 +237,13 @@ def optimize_and_vacuum_table_api(lakehouse_name: str, table_name: str, workspac
         }
     }
     
-    from job_operations import start_on_demand_job
     # Call start_on_demand_job to start the job
     job_instance_id = start_on_demand_job(
-        item_id=get_lakehouse_id(lakehouse_name, fabric.resolve_workspace_id(workspace)),
+        item_id=get_lakehouse_id(lakehouse_name, resolve_workspace_id(workspace, client=client), client=client),
         job_type="TableMaintenance",
         execution_data=execution_data,
-        workspace=fabric.resolve_workspace_id(workspace)
+        workspace=resolve_workspace_id(workspace, client=client),
+        client=client
     )
     
     return job_instance_id
@@ -275,7 +275,7 @@ def optimize_and_vacuum_table(lakehouse_name: str, table_name: str, retain_hours
     raise Exception(f"Error optimizing and vacuuming {full_table_name}: {e}")
 
 
-def optimize_and_vacuum_items_api(items_to_optimize_vacuum: str | dict, log_lakehouse: str = None, job_category: str = None, parent_job_name: str = None, parallelism: int = 3) -> None:
+def optimize_and_vacuum_items_api(items_to_optimize_vacuum: str | dict, log_lakehouse: str = None, job_category: str = None, parent_job_name: str = None, parallelism: int = 3, client=None) -> None:
     """Optimize and vacuum tables in lakehouses.
 
     Args:
@@ -284,6 +284,7 @@ def optimize_and_vacuum_items_api(items_to_optimize_vacuum: str | dict, log_lake
         job_category: The category of the job, if any.
         parent_job_name: The name of the parent job, if any.
         parallelism: The number of tables to optimize and vacuum concurrently, default is 3.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
     """
     from job_operations import insert_or_update_job_table, get_lakehouse_job_status
 
@@ -300,20 +301,20 @@ def optimize_and_vacuum_items_api(items_to_optimize_vacuum: str | dict, log_lake
         # If the running list is not full and the queue is not empty, pop a table from the queue and start the operation
         while len(running) < parallelism and queue:
             lakehouse_name, table_name = queue.pop(0)
-            operation_id = optimize_and_vacuum_table_api(lakehouse_name, table_name)
+            operation_id = optimize_and_vacuum_table_api(lakehouse_name, table_name, client=client)
             if log_lakehouse:
                 insert_or_update_job_table(
                     lakehouse_name=log_lakehouse,
                     job_name=f"{lakehouse_name}.{table_name}",
                     parent_job_name=parent_job_name,
                     request_id=operation_id,
-                    job_category=job_category,
+                    job_category=job_category
                 )
             job_details[lakehouse_name, table_name] = operation_id
             running.append((lakehouse_name, table_name, operation_id))
         # Check the status of the running tables and remove the ones that are finished
         for (lakehouse_name, table_name, operation_id) in running.copy():
-            operation_details = get_lakehouse_job_status(operation_id, lakehouse_name)
+            operation_details = get_lakehouse_job_status(operation_id, lakehouse_name, client=client)
             operation_status = operation_details['status']
             if operation_status not in ["NotStarted", "InProgress"]:
                 running.remove((lakehouse_name, table_name, operation_id))

@@ -3,13 +3,11 @@ import os
 import time
 import yaml
 
-from sempy import fabric
-
-from fabric_utils import call_api, get_create_or_update_fabric_item, get_item_id, get_lakehouse_id
+from fabric_utils import call_api, get_create_or_update_fabric_item, get_item_id, get_lakehouse_id, resolve_workspace_id
 from file_operations import encode_to_base64
 
 
-def update_sparkcompute(environment_name: str, file_path: str, workspace: str=None) -> str:
+def update_sparkcompute(environment_name: str, file_path: str, workspace: str=None, client=None) -> str:
     """
     Updates the SparkCompute configuration for the specified environment.
 
@@ -17,20 +15,21 @@ def update_sparkcompute(environment_name: str, file_path: str, workspace: str=No
         environment_name (str): Name of the target environment.
         file_path (str): Path to the YAML configuration file.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         str: Success message or error details.
     """
     try:
-        workspace_id = fabric.resolve_workspace_id(workspace)
-        environment_id = get_item_id(environment_name, "Environment", workspace_id)
+        workspace_id = resolve_workspace_id(workspace, client=client)
+        environment_id = get_item_id(environment_name, "Environment", workspace_id, client=client)
         if environment_id:
             with open(file_path, 'r') as yaml_file:
                 yaml_content = yaml.safe_load(yaml_file)
             json_content = json.dumps(yaml_content, indent=2)
             request_body = json.loads(json_content)
             endpoint = f"v1/workspaces/{workspace_id}/environments/{environment_id}/staging/sparkcompute"
-            response = call_api(endpoint, 'patch', body=request_body)
+            response = call_api(endpoint, 'patch', body=request_body, client=client)
             if response.status_code == 200:
                 return "SparkCompute updated successfully."
             else:
@@ -41,28 +40,29 @@ def update_sparkcompute(environment_name: str, file_path: str, workspace: str=No
         return f"Error: {str(e)}"
 
 
-def publish_staging_environment(environment_name: str, workspace: str=None) -> str:
+def publish_staging_environment(environment_name: str, workspace: str=None, client=None) -> str:
     """
     Initiates the publishing process for the specified environment.
 
     Args:
         environment_name (str): Name of the target environment.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         str: Publish status message.
     """
     try:
-        workspace_id = fabric.resolve_workspace_id(workspace)
-        environment_id = get_item_id(environment_name, "Environment", workspace_id)
+        workspace_id = resolve_workspace_id(workspace, client=client)
+        environment_id = get_item_id(environment_name, "Environment", workspace_id, client=client)
         if environment_id:
             endpoint = f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/publish"
-            response = call_api(endpoint, 'post')
+            response = call_api(endpoint, 'post', client=client)
             if response.status_code == 200:
                 print("Publish started...")
-                while get_publish_state(environment_name, workspace_id) == "running":
+                while get_publish_state(environment_name, workspace_id, client=client) == "running":  # Pass client to get_publish_state
                     time.sleep(30)
-                return f"Publish {get_publish_state(environment_name, workspace_id)}"
+                return f"Publish {get_publish_state(environment_name, workspace_id, client=client)}"  # Pass client to get_publish_state
             else:
                 return f"Error starting publish: {response.text}"
         else:
@@ -71,23 +71,24 @@ def publish_staging_environment(environment_name: str, workspace: str=None) -> s
         return f"Error: {str(e)}"
 
 
-def get_publish_state(environment_name: str, workspace: str=None) -> str:
+def get_publish_state(environment_name: str, workspace: str=None, client=None) -> str:
     """
     Retrieves the current publish state of the specified environment.
 
     Args:
         environment_name: Name of the target environment.
         workspace: The name or ID of the workspace. If not provided, it uses the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         Current publish state (e.g., "running", "success", "failed", etc).
     """
     try:
-        workspace_id = fabric.resolve_workspace_id(workspace)
-        environment_id = get_item_id(environment_name, "Environment", workspace_id)
+        workspace_id = resolve_workspace_id(workspace, client=client)
+        environment_id = get_item_id(environment_name, "Environment", workspace_id, client=client)
         if environment_id:
             endpoint = f"/v1/workspaces/{workspace_id}/environments/{environment_id}"
-            response = call_api(endpoint, 'get')
+            response = call_api(endpoint, 'get', client=client)
             publish_details = response.json().get('properties', {}).get('publishDetails', {})
             return publish_details.get('state', "Unknown")
         else:
@@ -96,7 +97,7 @@ def get_publish_state(environment_name: str, workspace: str=None) -> str:
         return f"Error: {str(e)}"
     
 
-def upload_files_to_environment(environment_name: str, file_paths: str, workspace: str=None) -> dict:
+def upload_files_to_environment(environment_name: str, file_paths: str, workspace: str=None, client=None) -> dict:
     """
     Uploads one or more library files to the specified environment.
 
@@ -104,6 +105,7 @@ def upload_files_to_environment(environment_name: str, file_paths: str, workspac
         environment_name (str): Name of the target environment.
         file_paths (str or list of str): Path(s) to the library file(s) on the local system.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         dict: Dictionary with file paths as keys and success messages or error details as values.
@@ -114,8 +116,8 @@ def upload_files_to_environment(environment_name: str, file_paths: str, workspac
 
     results = {}
     try:
-        workspace_id = fabric.resolve_workspace_id(workspace)
-        environment_id = get_item_id(environment_name, "Environment", workspace_id)
+        workspace_id = resolve_workspace_id(workspace, client=client)
+        environment_id = get_item_id(environment_name, "Environment", workspace_id, client=client)
         if environment_id:
             endpoint = f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/libraries"
             for file_path in file_paths:
@@ -123,7 +125,7 @@ def upload_files_to_environment(environment_name: str, file_paths: str, workspac
                 try:
                     with open(file_path, 'rb') as file:
                         files = {'file': file}
-                        response = call_api(endpoint, method='post', files=files)
+                        response = call_api(endpoint, method='post', files=files, client=client)
                         if response.status_code == 200:
                             results[file_name] = "Library uploaded successfully."
                         else:
@@ -137,7 +139,7 @@ def upload_files_to_environment(environment_name: str, file_paths: str, workspac
     return results
 
 
-def create_and_publish_spark_environment(environment_name: str, yml_path: str, py_path: str, workspace: str=None):
+def create_and_publish_spark_environment(environment_name: str, yml_path: str, py_path: str, workspace: str=None, client=None):
     """
     Creates or replaces a Spark environment using the specified YAML and Python files.
 
@@ -146,24 +148,25 @@ def create_and_publish_spark_environment(environment_name: str, yml_path: str, p
         yml_path (str): Path to the Spark YAML configuration file.
         py_path (str): Path to the fabric_utils.py file.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
     """
     # Resolve workspace ID
-    workspace_id = fabric.resolve_workspace_id(workspace)
+    workspace_id = resolve_workspace_id(workspace, client=client)
     
     # Create or replace the fabric item
-    get_create_or_update_fabric_item(item_name = environment_name, item_type = "Environment", workspace=workspace_id)
+    get_create_or_update_fabric_item(item_name=environment_name, item_type="Environment", workspace=workspace_id, client=client)
     
     # Upload files to the environment
-    print(upload_files_to_environment(environment_name, py_path, workspace_id))
+    print(upload_files_to_environment(environment_name, py_path, workspace_id, client=client))
     
     # Update SparkCompute configuration
-    print(update_sparkcompute(environment_name, yml_path, workspace_id))
+    print(update_sparkcompute(environment_name, yml_path, workspace_id, client=client))
     
     # Publish the environment
-    print(publish_staging_environment(environment_name, workspace_id))
+    print(publish_staging_environment(environment_name, workspace_id, client=client))
 
 
-def create_or_replace_notebook_from_ipynb(notebook_path: str, default_lakehouse_name: str=None, environment_name: str=None, replacements: dict=None, workspace: str=None) -> str:
+def create_or_replace_notebook_from_ipynb(notebook_path: str, default_lakehouse_name: str=None, environment_name: str=None, replacements: dict=None, workspace: str=None, client=None) -> str:
     """
     Create or replace a notebook in the Fabric workspace.
 
@@ -175,12 +178,12 @@ def create_or_replace_notebook_from_ipynb(notebook_path: str, default_lakehouse_
         environment_name (str, optional): An optional parameter to set the environment name.
         replacements (dict, optional): A dictionary where each key-value pair represents a string to find and a string to replace it with in the code cells of the notebook.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         ID of the created/replaced Notebook
     """
-    # Resolve the workspace ID
-    workspace_id = fabric.resolve_workspace_id(workspace)
+    workspace_id = resolve_workspace_id(workspace, client=client)
 
     # Extract the notebook name from the path (excluding the .ipynb extension)
     notebook_name = os.path.splitext(os.path.basename(notebook_path))[0]
@@ -237,4 +240,4 @@ def create_or_replace_notebook_from_ipynb(notebook_path: str, default_lakehouse_
         }
 
     # Call the function to create or replace the notebook item in the workspace.
-    get_create_or_update_fabric_item(item_name=notebook_name, item_type='Notebook', item_definition=notebook_definition, workspace=workspace_id)
+    get_create_or_update_fabric_item(item_name=notebook_name, item_type='Notebook', item_definition=notebook_definition, workspace=workspace_id, client=client)

@@ -2,7 +2,8 @@ import os
 import time
 
 import notebookutils
-from sempy import fabric
+
+from api_client import FabricPowerBIClient
 
 
 def call_api(url, method, body=None, params=None, files=None, client=None, client_type='fabric'):
@@ -22,43 +23,19 @@ def call_api(url, method, body=None, params=None, files=None, client=None, clien
         The response from the API call.
 
     Raises:
-        ValueError: If an invalid method or client_type is provided.
+        ValueError: If neither 'sempy fabric' is available nor 'client' is provided.
     """    
     # Use the provided client if available
     if client is None:
-        # Define a dictionary to map client types to their respective client classes
-        client_classes = {
-            'fabric': fabric.FabricRestClient,
-            'powerbi': fabric.PowerBIRestClient
-        }
+        client = FabricPowerBIClient(client_type=client_type)
 
-        # Get the appropriate client class
-        client_class = client_classes.get(client_type.lower())
-        if client_class is None:
-            raise ValueError(f"Invalid client_type: {client_type}. Must be 'fabric' or 'powerbi'.")
-
-        # Initialize the client
-        client = client_class()
-
-    # Get the method from the client
-    try:
-        client_method = getattr(client, method.lower())
-    except AttributeError:
-        raise ValueError(f"Invalid method: {method}")
-
-    # Make the API call
-    try:
-        response = client_method(url, json=body, params=params, files=files)
-        response.raise_for_status()
-    except fabric.exceptions.FabricHTTPException as e:
-        raise Exception(f"An error occurred with the Fabric API: {e}")
-    except Exception as e:
-        raise Exception(f"An unexpected error occurred: {e}")
+    # Make the API call using the client's request method
+    response = client.request(method, url, json=body, params=params, files=files)
 
     return response
 
 
-def poll_operation_status(operation_id: str):
+def poll_operation_status(operation_id: str, client=None):
     """
     Polls the status of an operation until it is completed.
 
@@ -69,6 +46,7 @@ def poll_operation_status(operation_id: str):
 
     Parameters:
     - operation_id (str): The unique identifier of the operation to check.
+    - client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Raises:
     - Exception: If the operation status is 'Failed', an exception is raised with the
@@ -78,7 +56,7 @@ def poll_operation_status(operation_id: str):
     - A message 'Operation succeeded' if the operation completes successfully.
     """
     while True:
-        response = call_api(f'/v1/operations/{operation_id}', 'get').json()
+        response = call_api(f'/v1/operations/{operation_id}', 'get', client=client).json()
         status = response['status']
         
         if status == 'Succeeded':
@@ -94,13 +72,14 @@ def poll_operation_status(operation_id: str):
         time.sleep(5)
 
 
-def get_all_items_with_pagination(endpoint: str, params: dict=None):
+def get_all_items_with_pagination(endpoint: str, params: dict=None, client=None):
     """
     Fetch all items from a paginated API endpoint.
 
     Args:
         endpoint (str): The API endpoint to fetch data from.
         params (dict, optional): Additional query parameters for the API request.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         list: A list of all items retrieved from the API.
@@ -112,7 +91,7 @@ def get_all_items_with_pagination(endpoint: str, params: dict=None):
 
     while True:
         try:
-            response = call_api(endpoint, 'get', params=params)
+            response = call_api(endpoint, 'get', params=params, client=client)
             data = response.json()
 
             items = data.get('value', data.get('data', []))
@@ -131,15 +110,46 @@ def get_all_items_with_pagination(endpoint: str, params: dict=None):
     return all_items
 
 
-def get_fabric_capacities() -> list:
+def resolve_workspace_id(workspace: str, client=None) -> str:
+    """
+    Resolves a workspace name or UUID to the workspace UUID.
+
+    Args:
+        workspace (str): The name or UUID of the workspace.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+
+    Returns:
+        str: The workspace UUID.
+
+    Raises:
+        ValueError: If the workspace is not found.
+    """
+    try:
+        from sempy import fabric
+        return fabric.resolve_workspace_id(workspace)
+    except (ImportError, AttributeError):
+        # Fallback logic if sempy or the method isn't available
+        workspaces = get_all_items_with_pagination("/v1/workspaces", client=client)
+
+        for workspace_item in workspaces:
+            if workspace in (workspace_item["id"], workspace_item["displayName"]):
+                return workspace_item["id"]
+
+        raise ValueError(f"Workspace '{workspace}' not found.")
+    
+
+def get_fabric_capacities(client=None) -> list:
     """
     Retrieve fabric capacities from the API, filtering for active capacities with SKU not equal to 'PP3'.
+
+    Args:
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         List[Dict[str, Any]]: A list of fabric capacities that are active and do not have SKU 'PP3'.
     """
     endpoint = "/v1/capacities"
-    all_capacities = get_all_items_with_pagination(endpoint)
+    all_capacities = get_all_items_with_pagination(endpoint, client=client)
     
     # Filter the capacities
     filtered_capacities = [capacity for capacity in all_capacities 
@@ -148,7 +158,7 @@ def get_fabric_capacities() -> list:
     return filtered_capacities
 
 
-def get_fabric_items(item_name: str = None, item_type: str = None, workspace: str=None) -> list:
+def get_fabric_items(item_name: str = None, item_type: str = None, workspace: str=None, client=None) -> list:
     """
     Retrieve fabric items from a specified workspace, optionally filtered by item name and type.
 
@@ -156,15 +166,16 @@ def get_fabric_items(item_name: str = None, item_type: str = None, workspace: st
         item_name (str, optional): The name of the item to filter by (case-insensitive partial match).
         item_type (str, optional): The type of items to retrieve.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         List[Dict[str, Any]]: A list of fabric items matching the specified criteria.
     """
-    workspace_id = fabric.resolve_workspace_id(workspace)
+    workspace_id = resolve_workspace_id(workspace, client=client)
     params = {'type': item_type} if item_type else {}
     endpoint = f"/v1/workspaces/{workspace_id}/items"
 
-    all_items = get_all_items_with_pagination(endpoint, params)
+    all_items = get_all_items_with_pagination(endpoint, params, client=client)
 
     if item_name:
         return [item for item in all_items if item_name == item.get('displayName')]
@@ -172,7 +183,7 @@ def get_fabric_items(item_name: str = None, item_type: str = None, workspace: st
     return all_items
 
 
-def get_item_id(item_name: str, item_type: str, workspace: str=None) -> str:
+def get_item_id(item_name: str, item_type: str, workspace: str=None, client=None) -> str:
     """
     Get the ID of a specific item based on its name and type.
 
@@ -180,12 +191,13 @@ def get_item_id(item_name: str, item_type: str, workspace: str=None) -> str:
         item_name (str): The name of the item to find.
         item_type (str): The type of the item to find.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         Optional[str]: The ID of the matching item, or None if no matching item is found.
     """
-    workspace_id = fabric.resolve_workspace_id(workspace)
-    items = get_fabric_items(item_name=item_name, item_type=item_type, workspace=workspace_id)
+    workspace_id = resolve_workspace_id(workspace, client=client)
+    items = get_fabric_items(item_name=item_name, item_type=item_type, workspace=workspace_id, client=client) 
     
     if not items:
         print(f"{item_name} doesn't exist in the workspace as {item_type}")
@@ -194,7 +206,7 @@ def get_item_id(item_name: str, item_type: str, workspace: str=None) -> str:
     return items[0]['id']
 
 
-def get_lakehouse_id(lakehouse_name: str, workspace: str=None) -> str:
+def get_lakehouse_id(lakehouse_name: str, workspace: str=None, client=None) -> str:
     """
     Retrieves the ID of a Fabric Lakehouse item based on its display name.
 
@@ -205,14 +217,15 @@ def get_lakehouse_id(lakehouse_name: str, workspace: str=None) -> str:
     - lakehouse_name (str): The display name of the Fabric Lakehouse item to search for.
     - workspace (str, optional): The ID or name of the workspace where the Lakehouse item is located.
       Defaults to the current workspace if not provided.
+    - client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
     - str: The ID of the Fabric Lakehouse item if found.
     """
-    return get_item_id(item_name=lakehouse_name, item_type='Lakehouse', workspace=workspace)
+    return get_item_id(item_name=lakehouse_name, item_type='Lakehouse', workspace=workspace, client=client)
 
 
-def get_or_create_fabric_workspace(workspace_name: str, capacity_id: str = None) -> str:
+def get_or_create_fabric_workspace(workspace_name: str, capacity_id: str = None, client=None) -> str:
     """
     Resolves the workspace ID using the provided workspace name. If resolution fails, checks for capacity ID
     and creates a new workspace if needed.
@@ -220,6 +233,7 @@ def get_or_create_fabric_workspace(workspace_name: str, capacity_id: str = None)
     Args:
         workspace_name (str): Name of the workspace.
         capacity_id (str, optional): ID of the capacity. Defaults to None.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         str: The resolved or newly created workspace ID.
@@ -229,14 +243,14 @@ def get_or_create_fabric_workspace(workspace_name: str, capacity_id: str = None)
     """
     try:
         # Attempt to resolve the workspace ID using the provided workspace name
-        workspace_id = fabric.resolve_workspace_id(workspace_name)
+        workspace_id = resolve_workspace_id(workspace_name, client=client)
         return workspace_id
     except Exception as e:    
     # If the workspace ID resolution fails (returns None), check if capacity ID is missing
         if capacity_id is None:
             try:
                 # Fetch active capacities
-                capacities = get_fabric_capacities()
+                capacities = get_fabric_capacities(client=client)
                 
                 # Check if any capacities are available
                 if not capacities:
@@ -255,7 +269,7 @@ def get_or_create_fabric_workspace(workspace_name: str, capacity_id: str = None)
         }
         try:
             # Make the POST request to create the workspace
-            response = call_api("/v1/workspaces", 'post', body=body)
+            response = call_api("/v1/workspaces", 'post', body=body, client=client)
             
             # Parse the response JSON
             data = response.json()
@@ -268,7 +282,7 @@ def get_or_create_fabric_workspace(workspace_name: str, capacity_id: str = None)
             raise Exception("Failed to create workspace")
 
 
-def get_create_or_update_fabric_item(item_name: str, item_type: str, item_definition: dict=None, item_description: str=None, old_item_name: str=None, workspace: str=None):
+def get_create_or_update_fabric_item(item_name: str, item_type: str, item_definition: dict=None, item_description: str=None, old_item_name: str=None, workspace: str=None, client=None):
     """
     Gets, creates, or updates a Fabric item within a given workspace.
 
@@ -280,12 +294,13 @@ def get_create_or_update_fabric_item(item_name: str, item_type: str, item_defini
     - old_item_name (str, optional): The old display name of the item for renaming. Default is None.
     - workspace (str, optional): The name or ID of the workspace where the item is to be created or updated.
                                  If not provided, it uses the default workspace ID.
+    - client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
     - str: The ID of the item, whether it was newly created, updated, or already existed.
            Returns `None` if the operation fails.
     """
-    workspace_id = fabric.resolve_workspace_id(workspace)
+    workspace_id = resolve_workspace_id(workspace, client=client)
 
     # Build the request_body
     request_body = {
@@ -304,7 +319,7 @@ def get_create_or_update_fabric_item(item_name: str, item_type: str, item_defini
     method = "post"
     
     # Determine the item to work with based on old_item_name or item_name
-    item_id = get_item_id(item_name=old_item_name or item_name, item_type=item_type, workspace=workspace_id)
+    item_id = get_item_id(item_name=old_item_name or item_name, item_type=item_type, workspace=workspace_id, client=client)
 
     # Determine the appropriate action based on the item's existence and type
     if item_id is None:
@@ -320,9 +335,8 @@ def get_create_or_update_fabric_item(item_name: str, item_type: str, item_defini
         return item_id  # Item exists and doesn't need updating, so just return its ID
 
     # Perform the API request based on the method
-    response = call_api(url, method, request_body)
+    response = call_api(url, method, request_body, client=client)
     status_code = response.status_code
-
 
     # Check the response status code to determine the outcome
     if status_code in (200, 201):
@@ -330,7 +344,7 @@ def get_create_or_update_fabric_item(item_name: str, item_type: str, item_defini
     elif status_code == 202:
         # If status code indicates a pending operation, check its status
         try:
-            poll_operation_status(response.headers['x-ms-operation-id'])
+            poll_operation_status(response.headers['x-ms-operation-id'], client=client)
         except Exception as e:
             print(f"Operation failed: {str(e)}")
             return None
@@ -341,7 +355,7 @@ def get_create_or_update_fabric_item(item_name: str, item_type: str, item_defini
 
     # Ensure item_id is set (in case of new item creation)
     if not item_id:
-        item_id = get_item_id(item_name=item_name, item_type=item_type, workspace=workspace_id)
+        item_id = get_item_id(item_name=item_name, item_type=item_type, workspace=workspace_id, client=client)
 
     return item_id
 
@@ -362,7 +376,7 @@ def extract_item_name_and_type_from_path(parent_folder_path: str):
     return item_name, object_type
 
 
-def create_lakehouse_if_not_exists(lh_name: str, workspace: str=None) -> str:
+def create_lakehouse_if_not_exists(lh_name: str, workspace: str=None, client=None) -> str:
     """
     Creates a lakehouse with the given name if it does not exist already.
 
@@ -370,13 +384,15 @@ def create_lakehouse_if_not_exists(lh_name: str, workspace: str=None) -> str:
         lh_name (str): The name of the lakehouse to create.
         workspace (str, optional): The name or ID of the workspace where the lakehouse is to be created.
                                    If not provided, it uses the default workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+
 
     Returns:
         str: The ID of the lakehouse.
     """
-    workspace_id = fabric.resolve_workspace_id(workspace)
+    workspace_id = resolve_workspace_id(workspace, client=client)
 
-    return get_create_or_update_fabric_item(item_name = lh_name, item_type = "Lakehouse", workspace=workspace_id)
+    return get_create_or_update_fabric_item(item_name=lh_name, item_type="Lakehouse", workspace=workspace_id, client=client)
 
 
 def create_mount_point(abfss_path: str, mount_point: str = "/lakehouse/default") -> str:
@@ -405,7 +421,7 @@ def create_mount_point(abfss_path: str, mount_point: str = "/lakehouse/default")
         return next(m.localPath for m in notebookutils.fs.mounts() if m.mountPoint == mount_point)
 
 
-def get_lakehouse_path(lakehouse_name: str, path_type: str = "spark", folder_type: str = "Tables", workspace=None) -> str:
+def get_lakehouse_path(lakehouse_name: str, path_type: str = "spark", folder_type: str = "Tables", workspace=None, client=None) -> str:
     """
     Returns the path to a lakehouse folder based on the lakehouse name, path type, and folder type.
 
@@ -415,6 +431,8 @@ def get_lakehouse_path(lakehouse_name: str, path_type: str = "spark", folder_typ
         folder_type (str): The type of the folder, either "Tables" or "Files". Defaults to "Tables".
         workspace (str, optional): The name or ID of the workspace where the lakehouse is located.
                                    If not provided, it uses the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+
 
     Returns:
         str: The path to the lakehouse folder.
@@ -430,8 +448,8 @@ def get_lakehouse_path(lakehouse_name: str, path_type: str = "spark", folder_typ
     if folder_type not in ["Tables", "Files"]:
         raise ValueError(f"Invalid folder type: {folder_type}.")
 
-    workspace_id = fabric.resolve_workspace_id(workspace)
-    lakehouse_id = create_lakehouse_if_not_exists(lakehouse_name, workspace_id)
+    workspace_id = resolve_workspace_id(workspace, client=client)
+    lakehouse_id = create_lakehouse_if_not_exists(lakehouse_name, workspace_id, client=client)
 
     # Construct the path to the lakehouse
     abfss_path = f"abfss://{workspace_id}@onelake.dfs.fabric.microsoft.com"
@@ -445,13 +463,17 @@ def get_lakehouse_path(lakehouse_name: str, path_type: str = "spark", folder_typ
         return os.path.join(local_path, folder_type)
 
 
-def delete_path(lakehouse, item, folder_type='Tables'):
+def delete_path(lakehouse, item, folder_type='Tables', client=None):
     """Deletes the folder or file if it exists.
 
     Args:
-        path (str): The path of the folder or file to be deleted.
+        lakehouse (str): The name of the lakehouse.
+        item (str): The name of the item (folder or file) to delete.
+        folder_type (str): The type of folder ('Tables' or 'Files'). Defaults to 'Tables'.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+
     """
-    path = get_lakehouse_path(lakehouse, path_type='spark', folder_type=folder_type)
+    path = get_lakehouse_path(lakehouse, path_type='spark', folder_type=folder_type, client=client)
     path_item = os.path.join(path, item)
     if notebookutils.fs.exists(path_item):
         notebookutils.fs.rm(path_item, True)
@@ -459,21 +481,22 @@ def delete_path(lakehouse, item, folder_type='Tables'):
         print(f'Path does not exist: {path_item}')
 
 
-def get_delta_tables_in_lakehouse(lakehouse_name: str, workspace=None) -> list:
+def get_delta_tables_in_lakehouse(lakehouse_name: str, workspace=None, client=None) -> list:
     """
     Retrieve names of tables with format 'delta' from a specified lakehouse within a workspace.
 
     Args:
         lakehouse_name (str): The name of the lakehouse.
         workspace (str): The name or ID of the workspace. If not provided, it uses the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         List[str]: A list of table names with format 'delta' in the specified lakehouse.
     """
     try:
-        workspace_id = fabric.resolve_workspace_id(workspace)
-        lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id)
-        tables = get_all_items_with_pagination(f"/v1/workspaces/{workspace_id}/lakehouses/{lakehouse_id}/tables")
+        workspace_id = resolve_workspace_id(workspace, client=client)
+        lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id, client=client)
+        tables = get_all_items_with_pagination(f"/v1/workspaces/{workspace_id}/lakehouses/{lakehouse_id}/tables", client=client)
         
         delta_tables = [table['name'] for table in tables if table.get('format') == 'delta']
     except Exception as e:

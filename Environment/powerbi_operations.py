@@ -3,20 +3,19 @@ import json
 import os
 import time
 
-from sempy import fabric
-
 from fabric_utils import (call_api, get_lakehouse_id, get_create_or_update_fabric_item, get_item_id,
-                          extract_item_name_and_type_from_path)
+                          extract_item_name_and_type_from_path, resolve_workspace_id)
 from file_operations import get_file_content_as_base64
 
 
-def get_server_db(lakehouse_name: str, workspace: str=None) -> tuple:
+def get_server_db(lakehouse_name: str, workspace: str=None, client=None) -> tuple:
     """
     Retrieves the server and database details for a given lakehouse.
 
     Args:
         lakehouse_name (str): The name of the lakehouse.
         workspace (str, optional): The name or ID of the workspace. Defaults to the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         tuple: A tuple containing the SQL Analytics server connection string and database ID.
@@ -24,11 +23,11 @@ def get_server_db(lakehouse_name: str, workspace: str=None) -> tuple:
     Raises:
         Exception: If the request to get lakehouse details fails.
     """
-    workspace_id = fabric.resolve_workspace_id(workspace)
-    lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id)
+    workspace_id = resolve_workspace_id(workspace, client=client)
+    lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id, client=client)
     endpoint = f"/v1/workspaces/{workspace_id}/lakehouses/{lakehouse_id}"
     
-    response = call_api(endpoint, 'get')
+    response = call_api(endpoint, 'get', client=client)
     
     if response.status_code == 200:
         response_json = response.json()
@@ -40,21 +39,22 @@ def get_server_db(lakehouse_name: str, workspace: str=None) -> tuple:
         raise Exception(f"Failed to get lakehouse details: {response.status_code}")
 
 
-def get_shared_expression(lakehouse_name: str, workspace: str=None) -> str:
+def get_shared_expression(lakehouse_name: str, workspace: str=None, client=None) -> str:
     """
     Generates the shared expression statement for a given lakehouse and its SQL endpoint.
 
     Args:
         lakehouse_name (str): The name of the lakehouse.
         workspace (str, optional): The name or ID of the workspace in which the lakehouse resides. Defaults to the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         str: An M statement which can be used as the expression in the shared expression for a Direct Lake semantic model.
     """
-    workspace_id = fabric.resolve_workspace_id(workspace)
+    workspace_id = resolve_workspace_id(workspace, client=client)
     
     # Retrieve server and database details
-    server, db = get_server_db(lakehouse_name, workspace_id)
+    server, db = get_server_db(lakehouse_name, workspace_id, client=client)
     
     # Create the M statement
     m_statement = f'let\n\tdatabase = Sql.Database("{server}", "{db}")\nin\n\tdatabase'
@@ -62,7 +62,7 @@ def get_shared_expression(lakehouse_name: str, workspace: str=None) -> str:
     return m_statement
 
 
-def update_model_expression(dataset_name: str, lakehouse_name: str, workspace: str=None) -> None:
+def update_model_expression(dataset_name: str, lakehouse_name: str, workspace: str=None, client=None) -> None:
     """
     Update the expression in the semantic model to point to the specified lakehouse.
 
@@ -70,12 +70,14 @@ def update_model_expression(dataset_name: str, lakehouse_name: str, workspace: s
         dataset_name (str): The name of the dataset.
         lakehouse_name (str): The name of the lakehouse.
         workspace (str, optional): The ID or name of the workspace where the lakehouse resides. Defaults to the current workspace if not provided.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     """
-    workspace_id = fabric.resolve_workspace_id(workspace)
+    from sempy import fabric
+    workspace_id = resolve_workspace_id(workspace, client=client)
     tom_server = fabric.create_tom_server(readonly=False, workspace=workspace_id)
     tom_database = tom_server.Databases.GetByName(dataset_name)
-    shared_expression = get_shared_expression(lakehouse_name, workspace_id)
+    shared_expression = get_shared_expression(lakehouse_name, workspace_id, client=client)
     
     try:
         model = tom_database.Model
@@ -84,6 +86,55 @@ def update_model_expression(dataset_name: str, lakehouse_name: str, workspace: s
         print(f"The expression in the '{dataset_name}' semantic model has been updated to point to the '{lakehouse_name}' lakehouse.")
     except Exception as e:
         print(f"ERROR: The expression in the '{dataset_name}' semantic model was not updated. Error: {e}")
+
+
+def update_model_database_expression(path, fabric_connection_string, sql_analytics_endpoint_id):
+    """
+    Updates database connection strings in files at the specified path.
+
+    Replaces occurrences of `Sql.Database("server", "database")` with 
+    `Sql.Database("{fabric_connection_string}", "{sql_analytics_endpoint_id}")` in files
+    with `.tmdl`, `.bim`, or `.json` extensions.
+
+    Args:
+        path (str): File or directory path.
+        fabric_connection_string (str): New connection string.
+        sql_analytics_endpoint_id (str): New analytics endpoint ID.
+    """
+    VALID_EXTENSIONS = ('.tmdl', '.bim', '.json')
+
+    import re
+    def update_file(file_path):
+        with open(file_path, 'r+', encoding='utf-8') as f:
+            content = f.read()
+            pattern = r'Sql\.Database\("([^"]+)",\s"([^"]+)"\)'
+            replacement = f'Sql.Database("{fabric_connection_string}", "{sql_analytics_endpoint_id}")'
+            new_content = re.sub(pattern, replacement, content)
+            if new_content != content:
+                f.seek(0)
+                f.write(new_content)
+                f.truncate()
+                print(f"Updated: {os.path.basename(file_path)}")
+                return True
+        return False
+
+    updated = False
+
+    if os.path.isfile(path):
+        if path.lower().endswith(VALID_EXTENSIONS):
+            updated = update_file(path)
+    elif os.path.isdir(path):
+        for root, _, files in os.walk(path):
+            for file in files:
+                if file.lower().endswith(VALID_EXTENSIONS):
+                    file_path = os.path.join(root, file)
+                    if update_file(file_path):
+                        updated = True
+    else:
+        print(f"Invalid path: {path}")
+
+    if not updated:
+        print("No database expressions were updated in any files.")
 
 
 def update_definition_pbir(folder_path: str, dataset_id: str) -> None:
@@ -139,81 +190,6 @@ def update_definition_pbir(folder_path: str, dataset_id: str) -> None:
         raise json.JSONDecodeError(f"Error decoding JSON from the file '{file_path}': {str(e)}")
     except Exception as e:
         raise Exception(f"An error occurred while updating the file '{file_path}': {str(e)}")
-
-
-def create_or_replace_semantic_model(model_path: str, workspace: str=None) -> None:
-    """
-    Create or replace a Power BI semantic model from a given path.
-
-    Args:
-        model_path (str): The path to the folder containing the semantic model.
-        workspace (str, optional): The ID or name of the workspace to which the semantic model will be deployed. If not provided, defaults to the current workspace.
-
-    Raises:
-        ValueError: If the model_path is invalid.
-        Exception: For any other exceptions that might occur during the process.
-    """
-    workspace_id = fabric.resolve_workspace_id(workspace)
-    
-    # Validate input parameters
-    if not os.path.isdir(model_path):
-        raise ValueError(f"The model path '{model_path}' does not exist or is not a directory.")
-
-    try:
-        # Get item name and type
-        item_name, item_type = extract_item_name_and_type_from_path(model_path)
-
-        # Prepare the request body based on the model path
-        model_definition = create_powerbi_item_definition(model_path)
-
-        # Call the function to create or replace the fabric item in the workspace
-        get_create_or_update_fabric_item(item_name = item_name, item_type = item_type, item_definition = model_definition, workspace = workspace_id)
-
-    except Exception as e:
-        raise Exception(f"An error occurred while creating or replacing the semantic model: {str(e)}")
-
-
-def create_or_replace_report_from_pbir(report_path: str, dataset_name: str, dataset_workspace: str=None, report_workspace: str=None) -> None:
-    """
-    Create or replace a Power BI report in service from PBIR and point it to a dataset.
-
-    Args:
-        report_path (str): The path to the folder containing the 'definition.pbir' file.
-        dataset_name (str): The name of the dataset to be used in the report.
-        dataset_workspace (str, optional): The ID or name of the workspace containing the dataset. Defaults to the current workspace if not provided.
-        report_workspace (str, optional): The ID or name of the workspace where the report will be deployed. Defaults to the current workspace if not provided.
-
-    Raises:
-        ValueError: If the report_path or dataset_name is invalid.
-        Exception: For any other exceptions that might occur during the process.
-    """
-    dataset_workspace_id = fabric.resolve_workspace_id(dataset_workspace)
-    report_workspace_id = fabric.resolve_workspace_id(report_workspace)
-    
-    # Validate input parameters
-    if not os.path.isdir(report_path):
-        raise ValueError(f"The report path '{report_path}' does not exist or is not a directory.")
-    if not isinstance(dataset_name, str) or not dataset_name.strip():
-        raise ValueError("The dataset_name must be a non-empty string.")
-
-    try:
-        # Extract the ID of the dataset
-        dataset_id = get_item_id(dataset_name, 'SemanticModel', dataset_workspace_id)
-
-        # Prepare the Power BI report definition
-        update_definition_pbir(report_path, dataset_id)
-
-        # Get item name and type
-        item_name, item_type = extract_item_name_and_type_from_path(report_path)
-
-        # Prepare the request body with the report name, type, and definition
-        report_definition = create_powerbi_item_definition(report_path)
-
-        # Call the function to create or replace the fabric item
-        get_create_or_update_fabric_item(item_name = item_name, item_type = item_type, item_definition = report_definition, workspace = report_workspace_id)
-
-    except Exception as e:
-        raise Exception(f"An error occurred while creating or replacing the report: {str(e)}")
 
 
 def create_powerbi_item_definition(parent_folder_path: str) -> dict:
@@ -278,6 +254,89 @@ def create_powerbi_item_definition(parent_folder_path: str) -> dict:
     return item_definition
 
 
+def create_or_replace_semantic_model(model_path: str, lakehouse_name: str = None, workspace: str = None, client = None) -> None:
+    """
+    Create or replace a Power BI semantic model from a given path.
+
+    Args:
+        model_path (str): The path to the folder containing the semantic model.
+	    lakehouse_name (str, optional): The name of the lakehouse to get the server and database information. If not provided, the model expression will not be updated.
+        workspace (str, optional): The ID or name of the workspace to which the semantic model will be deployed. If not provided, defaults to the current workspace.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+
+    Raises:
+        ValueError: If the model_path is invalid.
+        Exception: For any other exceptions that might occur during the process.
+    """
+    workspace_id = resolve_workspace_id(workspace, client=client)
+    
+    # Validate input parameters
+    if not os.path.isdir(model_path):
+        raise ValueError(f"The model path '{model_path}' does not exist or is not a directory.")
+
+    try:
+        # Get item name and type
+        item_name, item_type = extract_item_name_and_type_from_path(model_path)
+
+        # If lakehouse_name is provided, update the model expression
+        if lakehouse_name:
+            server, db = get_server_db(lakehouse_name, workspace_id, client=client)
+            update_model_database_expression(model_path, server, db)
+
+        # Prepare the request body based on the model path
+        model_definition = create_powerbi_item_definition(model_path)
+
+        # Call the function to create or replace the fabric item in the workspace
+        get_create_or_update_fabric_item(item_name=item_name, item_type=item_type, item_definition=model_definition, workspace=workspace_id, client=client)
+
+    except Exception as e:
+        raise Exception(f"An error occurred while creating or replacing the semantic model: {str(e)}")
+
+
+def create_or_replace_report_from_pbir(report_path: str, dataset_name: str, dataset_workspace: str=None, report_workspace: str=None, client=None) -> None:
+    """
+    Create or replace a Power BI report in service from PBIR and point it to a dataset.
+
+    Args:
+        report_path (str): The path to the folder containing the 'definition.pbir' file.
+        dataset_name (str): The name of the dataset to be used in the report.
+        dataset_workspace (str, optional): The ID or name of the workspace containing the dataset. Defaults to the current workspace if not provided.
+        report_workspace (str, optional): The ID or name of the workspace where the report will be deployed. Defaults to the current workspace if not provided.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+
+    Raises:
+        ValueError: If the report_path or dataset_name is invalid.
+        Exception: For any other exceptions that might occur during the process.
+    """
+    dataset_workspace_id = resolve_workspace_id(dataset_workspace, client=client)
+    report_workspace_id = resolve_workspace_id(report_workspace, client=client)
+    
+    # Validate input parameters
+    if not os.path.isdir(report_path):
+        raise ValueError(f"The report path '{report_path}' does not exist or is not a directory.")
+    if not isinstance(dataset_name, str) or not dataset_name.strip():
+        raise ValueError("The dataset_name must be a non-empty string.")
+
+    try:
+        # Extract the ID of the dataset
+        dataset_id = get_item_id(dataset_name, 'SemanticModel', dataset_workspace_id, client=client)
+
+        # Prepare the Power BI report definition
+        update_definition_pbir(report_path, dataset_id)
+
+        # Get item name and type
+        item_name, item_type = extract_item_name_and_type_from_path(report_path)
+
+        # Prepare the request body with the report name, type, and definition
+        report_definition = create_powerbi_item_definition(report_path)
+
+        # Call the function to create or replace the fabric item
+        get_create_or_update_fabric_item(item_name = item_name, item_type = item_type, item_definition = report_definition, workspace = report_workspace_id, client=client)
+
+    except Exception as e:
+        raise Exception(f"An error occurred while creating or replacing the report: {str(e)}")
+
+
 def start_enhanced_refresh(
     semantic_model_name: str,
     workspace=None,
@@ -288,6 +347,7 @@ def start_enhanced_refresh(
     retry_count: int = 0,
     apply_refresh_policy: bool = False,
     effective_date: datetime.date = datetime.date.today(),
+    client=None
 ) -> str:
     """Starts an enhanced refresh of a semantic model.
 
@@ -301,6 +361,7 @@ def start_enhanced_refresh(
         retry_count (int, optional): The number of times to retry the refresh in case of failure. Defaults to 0.
         apply_refresh_policy (bool, optional): Whether to apply the refresh policy defined in the semantic model. Defaults to False.
         effective_date (datetime.date, optional): The date to use for the refresh. Defaults to today.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         str: The refresh request ID.
@@ -308,8 +369,8 @@ def start_enhanced_refresh(
     Raises:
         Exception: If the refresh fails or encounters an error.
     """
-    workspace_id = fabric.resolve_workspace_id(workspace)
-    semantic_model_id = get_item_id(item_name=semantic_model_name, item_type='SemanticModel', workspace=workspace_id)
+    workspace_id = resolve_workspace_id(workspace, client=client)
+    semantic_model_id = get_item_id(item_name=semantic_model_name, item_type='SemanticModel', workspace=workspace_id, client=client)
 
     # Convert refresh objects to JSON format
     objects_to_refresh = convert_to_json(refresh_objects)
@@ -333,7 +394,8 @@ def start_enhanced_refresh(
         url=f"/v1.0/myorg/groups/{workspace_id}/datasets/{semantic_model_id}/refreshes",
         method="POST",
         body=request_body,
-        client_type="powerbi"
+        client_type="powerbi",
+        client=client
     )
 
     # Extract the request ID from the Location header
@@ -342,13 +404,14 @@ def start_enhanced_refresh(
     return request_id
 
 
-def get_enhanced_refresh_details(semantic_model_name: str, refresh_request_id: str, workspace: str = None) -> dict:
+def get_enhanced_refresh_details(semantic_model_name: str, refresh_request_id: str, workspace: str = None, client=None) -> dict:
     """Gets the details of an enhanced refresh operation for a dataset.
 
     Args:
         semantic_model_name (str): The name of the semantic model.
         refresh_request_id (str): The ID of the refresh request.
         workspace (str, optional): The ID or name of the workspace where the dataset is located. Defaults to None.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         dict: The details of the refresh operation with an added 'duration_in_sec' key.
@@ -356,14 +419,15 @@ def get_enhanced_refresh_details(semantic_model_name: str, refresh_request_id: s
     Raises:
         Exception: If the operation fails or encounters an error.
     """
-    workspace_id = fabric.resolve_workspace_id(workspace)
-    semantic_model_id = get_item_id(item_name=semantic_model_name, item_type='SemanticModel', workspace=workspace_id)
+    workspace_id = resolve_workspace_id(workspace, client=client)
+    semantic_model_id = get_item_id(item_name=semantic_model_name, item_type='SemanticModel', workspace=workspace_id, client=client)
 
     # Make the API call
     response = call_api(
         url=f"/v1.0/myorg/groups/{workspace_id}/datasets/{semantic_model_id}/refreshes/{refresh_request_id}",
         method="GET",
-        client_type="powerbi"
+        client_type="powerbi", 
+        client=client
     )
 
     # Parse the response
@@ -385,13 +449,14 @@ def get_enhanced_refresh_details(semantic_model_name: str, refresh_request_id: s
     return refresh_details
 
 
-def cancel_enhanced_refresh(request_id: str, dataset_id: str, workspace: str=None) -> dict:
+def cancel_enhanced_refresh(request_id: str, dataset_id: str, workspace: str=None, client=None) -> dict:
     """Cancel an enhanced refresh request for a Power BI dataset.
 
     Args:
         request_id (str): The ID of the refresh request to cancel.
         dataset_id (str): The ID of the dataset to cancel the refresh for.
         workspace (str, optional): The ID or name of the workspace containing the dataset. Defaults to the current workspace if not provided.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         dict: The JSON response from the Power BI REST API.
@@ -399,13 +464,13 @@ def cancel_enhanced_refresh(request_id: str, dataset_id: str, workspace: str=Non
     Raises:
         FabricHTTPException: If the request fails with a non-200 status code.
     """
-    workspace_id = fabric.resolve_workspace_id(workspace)
+    workspace_id = resolve_workspace_id(workspace, client=client)
     
     # Construct the endpoint URL for the delete request
     endpoint = f"v1.0/myorg/groups/{workspace_id}/datasets/{dataset_id}/refreshes/{request_id}"
 
     # Send the delete request using call_api
-    response = call_api(endpoint, 'delete', client_type='powerbi')
+    response = call_api(endpoint, 'delete', client_type='powerbi', client=client)
 
     # Return the JSON response as a dictionary
     return response.json()
@@ -417,6 +482,7 @@ def refresh_and_wait(
     logging_lakehouse: str = None,
     parent_job_name: str = None,
     job_category: str = "Adhoc",
+    client=None
 ) -> None:
     """
     Waits for enhanced refresh of given datasets.
@@ -427,6 +493,7 @@ def refresh_and_wait(
       logging_lakehouse (str, optional): The name of the lakehouse where the job information will be logged. Defaults to None.
       parent_job_name (str, optional): The name of the parent job that triggered the refresh. Defaults to None.
       job_category (str, optional): The category of the job. Defaults to "Adhoc".
+      client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
       None
@@ -437,18 +504,18 @@ def refresh_and_wait(
     from job_operations import insert_or_update_job_table
 
     # Resolve the workspace_id from the workspace parameter
-    workspace_id = fabric.resolve_workspace_id(workspace)
+    workspace_id = resolve_workspace_id(workspace, client=client)
 
     # Filter out the datasets that do not exist
     valid_datasets = [
         dataset
         for dataset in dataset_list
-        if get_item_id(dataset, 'SemanticModel', workspace_id)
+        if get_item_id(dataset, 'SemanticModel', workspace_id, client=client)
     ]
 
     # Start the enhanced refresh for the valid datasets
     request_ids = {
-        dataset: start_enhanced_refresh(dataset, workspace_id)
+        dataset: start_enhanced_refresh(dataset, workspace_id, client=client)
         for dataset in valid_datasets
     }
 
@@ -475,7 +542,7 @@ def refresh_and_wait(
     while True:
         for dataset, request_id in request_ids.copy().items():
             # Get the status and details of the current request
-            refresh_details = get_enhanced_refresh_details(dataset, request_id, workspace_id)
+            refresh_details = get_enhanced_refresh_details(dataset, request_id, workspace_id, client=client)
             request_status = refresh_details["status"]
 
             # If the request is not unknown, print the details, store the status in the dictionary, and remove it from the request_ids

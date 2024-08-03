@@ -6,9 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.request import urlretrieve
 from zipfile import ZipFile
 
-from sempy import fabric
-
-from fabric_utils import get_lakehouse_path
+from fabric_utils import get_lakehouse_path, resolve_workspace_id
 
 
 def unzip_files(zip_full_path: str, filenames: list[str] = None, extract_full_path: str = None) -> None:
@@ -94,7 +92,7 @@ def unzip_parallel(lakehouse: str, zip_relative_path: str, extract_relative_path
         print(f"An error occurred: {e}")
 
 
-def download_data(url: str, lakehouse: str, path: str, workspace: str=None) -> str:
+def download_data(url: str, lakehouse: str, path: str, workspace: str=None, client=None) -> str:
     """
     Downloads a file from the given URL and saves it to the specified path in the lakehouse.
 
@@ -108,6 +106,7 @@ def download_data(url: str, lakehouse: str, path: str, workspace: str=None) -> s
         The path of the directory where the data will be stored.
     workspace : str, optional
         The name or ID of the workspace. Defaults to the current workspace ID.
+    client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns
     -------
@@ -115,10 +114,10 @@ def download_data(url: str, lakehouse: str, path: str, workspace: str=None) -> s
         The file path of the downloaded file.
     """
     # Resolve the workspace ID
-    workspace_id = fabric.resolve_workspace_id(workspace)
+    workspace_id = resolve_workspace_id(workspace, client=client)
 
     # Create a lake path
-    lake_path = os.path.join(get_lakehouse_path(lakehouse, "local", "Files", workspace_id), path)
+    lake_path = os.path.join(get_lakehouse_path(lakehouse, "local", "Files", workspace_id, client=client), path)
 
     # Create a file name from the base URL
     file_path = os.path.join(lake_path, os.path.basename(url))
@@ -187,7 +186,7 @@ def decode_from_base64(encoded_data):
     return decoded_json
 
 
-def delete_folder_from_lakehouse(lakehouse: str, path: str, workspace: str=None) -> None:
+def delete_folder_from_lakehouse(lakehouse: str, path: str, workspace: str=None, client=None) -> None:
     """
     Deletes a folder from the specified lakehouse.
 
@@ -195,15 +194,16 @@ def delete_folder_from_lakehouse(lakehouse: str, path: str, workspace: str=None)
     - lakehouse (str): The name of the lakehouse.
     - path (str): The folder path to be deleted within the lakehouse.
     - workspace (str, optional): The name or ID of the workspace. Defaults to the current workspace ID.
+    - client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
     None
     """
     # Resolve the workspace ID
-    workspace_id = fabric.resolve_workspace_id(workspace)
+    workspace_id = resolve_workspace_id(workspace, client=client)
 
     # Construct the lake path
-    lake_path = os.path.join(get_lakehouse_path(lakehouse, "local", "Files", workspace_id), path)
+    lake_path = os.path.join(get_lakehouse_path(lakehouse, "local", "Files", workspace_id, client=client), path)
     
     # Delete the folder
     shutil.rmtree(lake_path, ignore_errors=True)
