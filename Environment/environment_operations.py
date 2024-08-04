@@ -12,7 +12,7 @@ def update_sparkcompute(environment_name: str, file_path: str, workspace: str=No
 
     Args:
         environment_name (str): Name of the target environment.
-        file_path (str): Path to the YAML configuration file.
+        file_path (str): Path to the JSON configuration file.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
         client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
@@ -136,13 +136,13 @@ def upload_files_to_environment(environment_name: str, file_paths: str, workspac
     return results
 
 
-def create_and_publish_spark_environment(environment_name: str, yml_path: str, py_path: str, workspace: str=None, client=None):
+def create_and_publish_spark_environment(environment_name: str, json_path: str, py_path: str, workspace: str=None, client=None):
     """
-    Creates or replaces a Spark environment using the specified YAML and Python files.
+    Creates or replaces a Spark environment using the specified JSON and Python files.
 
     Args:
         environment_name (str): Name of the Spark environment.
-        yml_path (str): Path to the Spark YAML configuration file.
+        yml_path (str): Path to the Spark JSON configuration file.
         py_path (str): Path to the fabric_utils.py file.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
         client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
@@ -157,7 +157,7 @@ def create_and_publish_spark_environment(environment_name: str, yml_path: str, p
     print(upload_files_to_environment(environment_name, py_path, workspace_id, client=client))
     
     # Update SparkCompute configuration
-    print(update_sparkcompute(environment_name, yml_path, workspace_id, client=client))
+    print(update_sparkcompute(environment_name, json_path, workspace_id, client=client))
     
     # Publish the environment
     print(publish_staging_environment(environment_name, workspace_id, client=client))
