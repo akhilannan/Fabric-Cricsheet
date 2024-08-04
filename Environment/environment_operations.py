@@ -1,9 +1,8 @@
 import json
 import os
 import time
-import yaml
 
-from fabric_utils import call_api, get_create_or_update_fabric_item, get_item_id, get_lakehouse_id, resolve_workspace_id
+from fabric_utils import call_api, create_lakehouse_if_not_exists, get_create_or_update_fabric_item, get_item_id, resolve_workspace_id
 from file_operations import encode_to_base64
 
 
@@ -24,10 +23,8 @@ def update_sparkcompute(environment_name: str, file_path: str, workspace: str=No
         workspace_id = resolve_workspace_id(workspace, client=client)
         environment_id = get_item_id(environment_name, "Environment", workspace_id, client=client)
         if environment_id:
-            with open(file_path, 'r') as yaml_file:
-                yaml_content = yaml.safe_load(yaml_file)
-            json_content = json.dumps(yaml_content, indent=2)
-            request_body = json.loads(json_content)
+            with open(file_path, 'r') as json_file:
+                request_body = json.load(json_file)
             endpoint = f"v1/workspaces/{workspace_id}/environments/{environment_id}/staging/sparkcompute"
             response = call_api(endpoint, 'patch', body=request_body, client=client)
             if response.status_code == 200:
@@ -206,7 +203,7 @@ def create_or_replace_notebook_from_ipynb(notebook_path: str, default_lakehouse_
 
     # Apply default lakehouse if provided
     if default_lakehouse_name:
-        default_lakehouse_id = get_lakehouse_id(default_lakehouse_name, workspace_id)
+        default_lakehouse_id = create_lakehouse_if_not_exists(default_lakehouse_name, workspace_id, client=client)
         new_lakehouse_data = {
             "lakehouse": {
                 "default_lakehouse": default_lakehouse_id,
@@ -218,7 +215,7 @@ def create_or_replace_notebook_from_ipynb(notebook_path: str, default_lakehouse_
 
     # Append environment details if environment_name exists
     if environment_name:
-        environment_id = get_item_id(environment_name, "Environment", workspace_id)
+        environment_id = get_item_id(environment_name, "Environment", workspace_id, client=client)
         new_environment_data = {
             "environment": {
                 "environmentId": environment_id,

@@ -4,15 +4,25 @@ import os
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from pyspark.sql import DataFrame, SparkSession, functions as F
-from delta.tables import DeltaTable
+try:
+    from pyspark.sql import DataFrame, SparkSession, functions as F
+except ImportError:
+    DataFrame = None
+    SparkSession = None
+    F = None
 
-import notebookutils
+try:
+    from delta.tables import DeltaTable
+except ImportError:
+    DeltaTable = None
 
 from fabric_utils import get_lakehouse_id, get_lakehouse_path, get_delta_tables_in_lakehouse, resolve_workspace_id
 
 
-spark = SparkSession.builder.getOrCreate()
+if SparkSession is not None:
+    spark = SparkSession.builder.getOrCreate()
+else:
+    spark = None
 
 def delta_table_exists(lakehouse_name: str, tbl: str) -> bool:
   """Check if a delta table exists at the given path.
@@ -208,6 +218,7 @@ def compare_row_count(table1_lakehouse: str, table1_name: str, table2_lakehouse:
         # Compare the row counts and exit or print accordingly
         if row_count_1 == row_count_2:
             # If the row counts are equal, exit the notebook with message "No new data"
+            import notebookutils
             notebookutils.notebook.exit("No new data")
         else:
             print(f"Cricsheet has {row_count_2 - row_count_1} more matches added")

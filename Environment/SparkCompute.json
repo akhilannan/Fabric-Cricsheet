@@ -1,0 +1,10 @@
+{
+    "driver_cores": 8,
+    "driverMemory": "56g",
+    "executorCores": 8,
+    "executorMemory": "56g",
+    "sparkProperties": {
+      "spark.ms.autotune.enabled": true
+    },
+    "runtimeVersion": "1.3"
+}  

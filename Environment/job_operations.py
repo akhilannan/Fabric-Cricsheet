@@ -2,9 +2,10 @@ import datetime
 import time
 import uuid
 
-from pyspark.sql import functions as F
-
-import notebookutils
+try:
+    from pyspark.sql import functions as F
+except ImportError:
+    F = None
 
 from delta_table_operations import (read_delta_table, create_or_replace_delta_table,
                                      upsert_delta_table, create_spark_dataframe)
@@ -106,6 +107,7 @@ def insert_or_update_job_table(
 
 def execute_dag(dag):
     """Run multiple notebooks in parallel and return the results or raise an exception."""
+    import notebookutils
     results = notebookutils.notebook.runMultiple(dag)
     errors = [] # A list to store the errors
     for job, data in results.items(): # Loop through the dictionary

@@ -1,8 +1,6 @@
 import os
 import time
 
-import notebookutils
-
 from api_client import FabricPowerBIClient
 
 
@@ -408,7 +406,7 @@ def create_mount_point(abfss_path: str, mount_point: str = "/lakehouse/default")
     Raises:
         ValueError: If the mount point is already in use or invalid.
     """
-    
+    import notebookutils
     # Check if the mount point exists in fs.mounts
     if any(m.mountPoint == mount_point for m in notebookutils.fs.mounts()):
         # Return the local path of the existing mount point
@@ -473,6 +471,7 @@ def delete_path(lakehouse, item, folder_type='Tables', client=None):
         client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     """
+    import notebookutils
     path = get_lakehouse_path(lakehouse, path_type='spark', folder_type=folder_type, client=client)
     path_item = os.path.join(path, item)
     if notebookutils.fs.exists(path_item):
