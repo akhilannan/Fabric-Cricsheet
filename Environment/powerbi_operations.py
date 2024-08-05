@@ -140,6 +140,7 @@ def update_model_database_expression(path, fabric_connection_string, sql_analyti
 def update_definition_pbir(folder_path: str, dataset_id: str) -> None:
     """
     Update the 'definition.pbir' file in the specified folder with new dataset details.
+    Only writes to the file if there's a change in the datasetReference content.
     
     Args:
         folder_path (str): The path to the folder containing the 'definition.pbir' file.
@@ -149,8 +150,10 @@ def update_definition_pbir(folder_path: str, dataset_id: str) -> None:
         FileNotFoundError: If the 'definition.pbir' file does not exist.
         ValueError: If the folder_path or dataset_id is invalid.
         json.JSONDecodeError: If the file content is not valid JSON.
+        KeyError: If 'datasetReference' key is not found in the file.
         Exception: For any other exceptions that might occur.
     """
+    file_to_udpate = 'definition.pbir'
     # Validate input parameters
     if not os.path.isdir(folder_path):
         raise ValueError(f"The folder path '{folder_path}' does not exist or is not a directory.")
@@ -158,7 +161,8 @@ def update_definition_pbir(folder_path: str, dataset_id: str) -> None:
         raise ValueError("The dataset_id must be a non-empty string.")
     
     # Define the file path
-    file_path = os.path.join(folder_path, 'definition.pbir')
+    file_path = os.path.join(folder_path, file_to_udpate)
+    file_full_name = os.path.join(*file_path.split(os.sep)[-2:])
     
     # Check if the file exists
     if not os.path.isfile(file_path):
@@ -169,25 +173,36 @@ def update_definition_pbir(folder_path: str, dataset_id: str) -> None:
         with open(file_path, 'r', encoding='utf-8') as file:
             data = json.load(file)
         
-        # Update the content
-        data['datasetReference']['byPath'] = None
-        data['datasetReference']['byConnection'] = {
-            "connectionString": None,
-            "pbiServiceModelId": None,
-            "pbiModelVirtualServerName": "sobe_wowvirtualserver",
-            "pbiModelDatabaseName": dataset_id,
-            "name": "EntityDataSource",
-            "connectionType": "pbiServiceXmlaStyleLive"
+        # Create the new datasetReference content
+        new_dataset_reference = {
+            "byPath": None,
+            "byConnection": {
+                "connectionString": None,
+                "pbiServiceModelId": None,
+                "pbiModelVirtualServerName": "sobe_wowvirtualserver",
+                "pbiModelDatabaseName": dataset_id,
+                "name": "EntityDataSource",
+                "connectionType": "pbiServiceXmlaStyleLive"
+            }
         }
         
-        # Write the updated content back to the file
-        with open(file_path, 'w', encoding='utf-8') as file:
-            json.dump(data, file, indent=4)
-        
-        print(f"File '{file_path}' updated successfully.")
+        # Check if there's a change in the datasetReference
+        if data['datasetReference'] != new_dataset_reference:
+            # Update the datasetReference
+            data['datasetReference'] = new_dataset_reference
+            
+            # Write the updated content back to the file
+            with open(file_path, 'w', encoding='utf-8') as file:
+                json.dump(data, file, indent=4)
+            
+            print(f"File '{file_full_name}' updated successfully.")
+        else:
+            print(f"No changes needed for file '{file_full_name}'.")
     
     except json.JSONDecodeError as e:
         raise json.JSONDecodeError(f"Error decoding JSON from the file '{file_path}': {str(e)}")
+    except KeyError as e:
+        raise KeyError(f"The 'datasetReference' key was not found in the file '{file_path}'")
     except Exception as e:
         raise Exception(f"An error occurred while updating the file '{file_path}': {str(e)}")
 

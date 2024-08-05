@@ -33,7 +33,7 @@ def call_api(url, method, body=None, params=None, files=None, client=None, clien
     return response
 
 
-def poll_operation_status(operation_id: str, client=None):
+def poll_operation_status(operation_id: str, message: str=None, client=None):
     """
     Polls the status of an operation until it is completed.
 
@@ -44,6 +44,7 @@ def poll_operation_status(operation_id: str, client=None):
 
     Parameters:
     - operation_id (str): The unique identifier of the operation to check.
+    - message (str, optional): A message to print upon success.
     - client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Raises:
@@ -51,14 +52,14 @@ def poll_operation_status(operation_id: str, client=None):
       error code and message from the response.
 
     Prints:
-    - A message 'Operation succeeded' if the operation completes successfully.
+    - 'Operation succeeded: {message}' if successful
     """
     while True:
         response = call_api(f'/v1/operations/{operation_id}', 'get', client=client).json()
         status = response['status']
         
         if status == 'Succeeded':
-            print('Operation succeeded')
+            print(f'Operation succeeded{": " + message if message else ""}')
             break
         
         if status == 'Failed':
@@ -335,14 +336,15 @@ def get_create_or_update_fabric_item(item_name: str, item_type: str, item_defini
     # Perform the API request based on the method
     response = call_api(url, method, request_body, client=client)
     status_code = response.status_code
+    msg = f"'{item_name}' {item_type} {action}."
 
     # Check the response status code to determine the outcome
     if status_code in (200, 201):
-        print(f"Operation succeeded: '{item_name}' {action} as a {item_type}.")
+        print(f"Operation succeeded: {msg}.")
     elif status_code == 202:
         # If status code indicates a pending operation, check its status
         try:
-            poll_operation_status(response.headers['x-ms-operation-id'], client=client)
+            poll_operation_status(response.headers['x-ms-operation-id'], msg, client=client)
         except Exception as e:
             print(f"Operation failed: {str(e)}")
             return None
