@@ -172,14 +172,12 @@ def get_row_count(lakehouse_or_link: str, table_name: str = None) -> int:
     if table_name is None:
         # Extract the row count from the HTML table
         try:
+            import pyspark.pandas as ps
+
             row_count = int(
-                pd
-                .read_html(lakehouse_or_link)[1]
-                .All
-                .str
-                .extract("([\\d,]+)")
-                .iloc[0, 0]
-                .replace(",", "")
+                ps.read_html(lakehouse_or_link)[1]
+                .All.str.replace(r"[^\d]", "", regex=True)
+                .iloc[0]
             )
         except ValueError:
             print("Invalid row count in the web page")
@@ -187,7 +185,7 @@ def get_row_count(lakehouse_or_link: str, table_name: str = None) -> int:
     else:
         # Get the row count from the delta table
         row_count = read_delta_table(lakehouse_or_link, table_name).count()
-    
+
     return row_count
 
 
