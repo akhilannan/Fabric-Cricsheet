@@ -304,14 +304,10 @@ def get_create_or_update_fabric_item(item_name: str, item_type: str, item_defini
     # Build the request_body
     request_body = {
         "displayName": item_name,
-        "type": item_type
+        "type": item_type,
+        **({"description": item_description} if item_description else {}),
+        **({"definition": item_definition} if item_definition else {})
     }
-
-    if item_description:
-        request_body["description"] = item_description
-
-    if item_definition:
-        request_body["definition"] = item_definition
 
     # Initialize URL and method
     url = f"/v1/workspaces/{workspace_id}/items"
@@ -353,11 +349,7 @@ def get_create_or_update_fabric_item(item_name: str, item_type: str, item_defini
         print(f"Operation failed with status code: {status_code}")
         return None
 
-    # Ensure item_id is set (in case of new item creation)
-    if not item_id:
-        item_id = get_item_id(item_name=item_name, item_type=item_type, workspace=workspace_id, client=client)
-
-    return item_id
+    return item_id or get_item_id(item_name, item_type, workspace_id, client)
 
 
 def extract_item_name_and_type_from_path(parent_folder_path: str):
