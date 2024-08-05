@@ -6,12 +6,12 @@ from fabric_utils import call_api, create_lakehouse_if_not_exists, get_create_or
 from file_operations import encode_to_base64
 
 
-def update_sparkcompute(environment_name: str, file_path: str, workspace: str=None, client=None) -> str:
+def update_sparkcompute(environment_id: str, file_path: str, workspace: str=None, client=None) -> str:
     """
     Updates the SparkCompute configuration for the specified environment.
 
     Args:
-        environment_name (str): Name of the target environment.
+        environment_id (str): ID of the target environment.
         file_path (str): Path to the JSON configuration file.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
         client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
@@ -21,7 +21,6 @@ def update_sparkcompute(environment_name: str, file_path: str, workspace: str=No
     """
     try:
         workspace_id = resolve_workspace_id(workspace, client=client)
-        environment_id = get_item_id(environment_name, "Environment", workspace_id, client=client)
         if environment_id:
             with open(file_path, 'r') as json_file:
                 request_body = json.load(json_file)
@@ -32,17 +31,17 @@ def update_sparkcompute(environment_name: str, file_path: str, workspace: str=No
             else:
                 return f"Error updating SparkCompute: {response.text}"
         else:
-            return "Environment not found."
+            return "Environment ID not provided."
     except Exception as e:
         return f"Error: {str(e)}"
 
 
-def publish_staging_environment(environment_name: str, workspace: str=None, client=None) -> str:
+def publish_staging_environment(environment_id: str, workspace: str=None, client=None) -> str:
     """
     Initiates the publishing process for the specified environment.
 
     Args:
-        environment_name (str): Name of the target environment.
+        environment_id (str): ID of the target environment.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
         client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
@@ -51,31 +50,30 @@ def publish_staging_environment(environment_name: str, workspace: str=None, clie
     """
     try:
         workspace_id = resolve_workspace_id(workspace, client=client)
-        environment_id = get_item_id(environment_name, "Environment", workspace_id, client=client)
         if environment_id:
             endpoint = f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/publish"
             response = call_api(endpoint, 'post', client=client)
             if response.status_code == 200:
                 print("Publish started...")
                 while True:
-                    publish_state = get_publish_state(environment_name, workspace_id, client=client)
+                    publish_state = get_publish_state(environment_id, workspace_id, client=client)
                     if publish_state != "running":
                         return f"Publish {publish_state}"
                     time.sleep(30)
             else:
                 return f"Error starting publish: {response.text}"
         else:
-            return "Environment not found."
+            return "Environment ID not provided."
     except Exception as e:
         return f"Error: {str(e)}"
 
 
-def get_publish_state(environment_name: str, workspace: str=None, client=None) -> str:
+def get_publish_state(environment_id: str, workspace: str=None, client=None) -> str:
     """
     Retrieves the current publish state of the specified environment.
 
     Args:
-        environment_name: Name of the target environment.
+        environment_id (str): ID of the target environment.
         workspace: The name or ID of the workspace. If not provided, it uses the current workspace ID.
         client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
@@ -84,24 +82,23 @@ def get_publish_state(environment_name: str, workspace: str=None, client=None) -
     """
     try:
         workspace_id = resolve_workspace_id(workspace, client=client)
-        environment_id = get_item_id(environment_name, "Environment", workspace_id, client=client)
         if environment_id:
             endpoint = f"/v1/workspaces/{workspace_id}/environments/{environment_id}"
             response = call_api(endpoint, 'get', client=client)
             publish_details = response.json().get('properties', {}).get('publishDetails', {})
             return publish_details.get('state', "Unknown")
         else:
-            return "Environment not found."
+            return "Environment ID not provided."
     except Exception as e:
         return f"Error: {str(e)}"
-    
 
-def upload_files_to_environment(environment_name: str, file_paths: str, workspace: str=None, client=None) -> dict:
+
+def upload_files_to_environment(environment_id: str, file_paths: str, workspace: str=None, client=None) -> dict:
     """
     Uploads one or more library files to the specified environment.
 
     Args:
-        environment_name (str): Name of the target environment.
+        environment_id (str): ID of the target environment.
         file_paths (str or list of str): Path(s) to the library file(s) on the local system.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
         client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
@@ -116,7 +113,6 @@ def upload_files_to_environment(environment_name: str, file_paths: str, workspac
     results = {}
     try:
         workspace_id = resolve_workspace_id(workspace, client=client)
-        environment_id = get_item_id(environment_name, "Environment", workspace_id, client=client)
         if environment_id:
             endpoint = f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/libraries"
             for file_path in file_paths:
@@ -132,15 +128,50 @@ def upload_files_to_environment(environment_name: str, file_paths: str, workspac
                 except Exception as e:
                     results[file_name] = f"Error: {str(e)}"
         else:
-            return {"error": "Environment not found."}
+            return {"error": "Environment ID not provided."}
     except Exception as e:
         return {"error": f"Error: {str(e)}"}
     return results
 
 
+def delete_existing_libraries_and_publish(environment_id: str, workspace: str = None, client = None) -> None:
+    """
+    Checks for existing custom libraries in the environment, deletes them, and publishes the environment.
+
+    Args:
+        environment_id (str): ID of the target environment.
+        workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
+        client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+    """
+    workspace_id = resolve_workspace_id(workspace, client=client)
+
+    try:
+        # Check for existing custom libraries
+        response = call_api(f"/v1/workspaces/{workspace_id}/environments/{environment_id}/libraries", 'Get', client=client).json()
+        custom_libraries = response.get("customLibraries", {})
+
+        # Extract list of files to delete
+        files_to_delete = [file for file_type in ["wheelFiles", "pyFiles", "jarFiles", "rTarFiles"]
+                           for file in custom_libraries.get(file_type, [])]
+
+        if files_to_delete:
+            print("Deleting existing libraries...")
+            # Delete existing libraries
+            for file in files_to_delete:
+                call_api(f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/libraries?libraryToDelete={file}", 'Delete', client=client)
+            
+            # Publish after deleting
+            print(publish_staging_environment(environment_id, workspace_id, client=client))
+
+    except Exception as e:
+        if "404" in str(e):  # If the error message contains "404"
+            return  # Exit the function
+        raise
+        
+
 def create_and_publish_spark_environment(environment_name: str, json_path: str, py_path: str, workspace: str=None, client=None):
     """
-    Creates or replaces a Spark environment using the specified JSON and Python files.
+    Creates or updates a Spark environment using the specified JSON and Python files.
 
     Args:
         environment_name (str): Name of the Spark environment.
@@ -149,94 +180,82 @@ def create_and_publish_spark_environment(environment_name: str, json_path: str, 
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
         client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
     """
-    # Resolve workspace ID
     workspace_id = resolve_workspace_id(workspace, client=client)
-    
-    # Create or replace the fabric item
-    get_create_or_update_fabric_item(item_name=environment_name, item_type="Environment", workspace=workspace_id, client=client)
-    
-    # Upload files to the environment
-    print(upload_files_to_environment(environment_name, py_path, workspace_id, client=client))
-    
-    # Update SparkCompute configuration
-    print(update_sparkcompute(environment_name, json_path, workspace_id, client=client))
-    
-    # Publish the environment
-    print(publish_staging_environment(environment_name, workspace_id, client=client))
+    environment_id = get_create_or_update_fabric_item(item_name=environment_name, item_type="Environment", workspace=workspace_id, client=client)
+    delete_existing_libraries_and_publish(environment_id, workspace_id, client=client)
+    print(upload_files_to_environment(environment_id, py_path, workspace_id, client=client))
+    print(update_sparkcompute(environment_id, json_path, workspace_id, client=client))
+    print(publish_staging_environment(environment_id, workspace_id, client=client))
 
 
-def create_or_replace_notebook_from_ipynb(notebook_path: str, default_lakehouse_name: str=None, environment_name: str=None, replacements: dict=None, workspace: str=None, client=None) -> str:
+def create_or_replace_notebook_from_ipynb(notebook_path: str, default_lakehouse_name: str = None, environment_name: str = None, replacements: dict = None, workspace: str = None, client = None) -> str:
     """
     Create or replace a notebook in the Fabric workspace.
 
-    This function takes the path to the notebook file, an optional workspace name or ID, and a dictionary of replacements. It reads the notebook file, encodes the notebook JSON content to Base64, and sends a request to create or replace the notebook item in the specified Fabric workspace.
-
     Args:
-        notebook_path (str): The path to the notebook .ipynb file.
-        default_lakehouse_name (str, optional): An optional parameter to set the default lakehouse name.
-        environment_name (str, optional): An optional parameter to set the environment name.
-        replacements (dict, optional): A dictionary where each key-value pair represents a string to find and a string to replace it with in the code cells of the notebook.
+        notebook_path (str): Path to the notebook .ipynb file.
+        default_lakehouse_name (str, optional): Default lakehouse of the Notebook.
+        environment_name (str, optional): Environment name.
+        replacements (dict, optional): Dictionary of string replacements in code cells.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
         client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
-        ID of the created/replaced Notebook
+        str: ID of the created/replaced Notebook.
     """
     workspace_id = resolve_workspace_id(workspace, client=client)
-
     # Extract the notebook name from the path (excluding the .ipynb extension)
     notebook_name = os.path.splitext(os.path.basename(notebook_path))[0]
 
-    # Open the notebook file and load its JSON content
+    # Load notebook JSON content
     with open(notebook_path, 'r', encoding='utf-8') as f:
         notebook_json = json.load(f)
 
-    # Apply replacements if provided
+    # Apply replacements
     if replacements:
-        for cell in notebook_json['cells']:
+        for cell in notebook_json.get('cells', []):
             if cell['cell_type'] == 'code':
-                new_source = []
-                for line in cell['source']:
-                    for key, value in replacements.items():
-                        if key in line:
-                            line = line.replace(key, value)
-                    new_source.append(line)
-                cell['source'] = new_source
+                cell['source'] = [
+                    line.replace(key, value) 
+                    for line in cell['source'] 
+                    for key, value in replacements.items()
+                ]
 
-    # Apply default lakehouse if provided
+    # Apply default lakehouse
     if default_lakehouse_name:
         default_lakehouse_id = create_lakehouse_if_not_exists(default_lakehouse_name, workspace_id, client=client)
-        new_lakehouse_data = {
+        notebook_json.setdefault('metadata', {}).setdefault('dependencies', {}).update({
             "lakehouse": {
                 "default_lakehouse": default_lakehouse_id,
                 "default_lakehouse_name": default_lakehouse_name,
                 "default_lakehouse_workspace_id": workspace_id
             }
-        }
-        notebook_json['metadata']['dependencies'] = new_lakehouse_data
+        })
 
-    # Append environment details if environment_name exists
+    # Append environment details
     if environment_name:
         environment_id = get_item_id(environment_name, "Environment", workspace_id, client=client)
-        new_environment_data = {
+        notebook_json['metadata']['dependencies'].update({
             "environment": {
                 "environmentId": environment_id,
                 "workspaceId": workspace_id
             }
-        }
-        notebook_json['metadata']['dependencies'].update(new_environment_data)
+        })
 
-    # Construct the request body with the notebook details.
+    # Construct the request body with the notebook details
     notebook_definition = {
-            "format": "ipynb",
-            "parts": [
-                {
-                    "path": "artifact.content.ipynb",
-                    "payload": encode_to_base64(notebook_json),
-                    "payloadType": "InlineBase64"
-                }
-            ]
-        }
+        "format": "ipynb",
+        "parts": [{
+            "path": "artifact.content.ipynb",
+            "payload": encode_to_base64(notebook_json),
+            "payloadType": "InlineBase64"
+        }]
+    }
 
-    # Call the function to create or replace the notebook item in the workspace.
-    get_create_or_update_fabric_item(item_name=notebook_name, item_type='Notebook', item_definition=notebook_definition, workspace=workspace_id, client=client)
+    return get_create_or_update_fabric_item(
+        item_name=notebook_name, 
+        item_type='Notebook', 
+        item_definition=notebook_definition, 
+        workspace=workspace_id, 
+        client=client
+    )

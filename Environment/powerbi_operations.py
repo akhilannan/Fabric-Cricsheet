@@ -161,8 +161,9 @@ def update_definition_pbir(folder_path: str, dataset_id: str) -> None:
         raise ValueError("The dataset_id must be a non-empty string.")
     
     # Define the file path
-    file_path = os.path.join(folder_path, file_to_udpate)
-    file_full_name = os.path.join(*file_path.split(os.sep)[-2:])
+    sep = "/"
+    file_path = folder_path + sep + file_to_udpate
+    file_full_name = (sep).join(file_path.split(sep)[-2:])
     
     # Check if the file exists
     if not os.path.isfile(file_path):
