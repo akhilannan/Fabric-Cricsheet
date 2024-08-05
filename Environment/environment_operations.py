@@ -57,9 +57,11 @@ def publish_staging_environment(environment_name: str, workspace: str=None, clie
             response = call_api(endpoint, 'post', client=client)
             if response.status_code == 200:
                 print("Publish started...")
-                while get_publish_state(environment_name, workspace_id, client=client) == "running":  # Pass client to get_publish_state
+                while True:
+                    publish_state = get_publish_state(environment_name, workspace_id, client=client)
+                    if publish_state != "running":
+                        return f"Publish {publish_state}"
                     time.sleep(30)
-                return f"Publish {get_publish_state(environment_name, workspace_id, client=client)}"  # Pass client to get_publish_state
             else:
                 return f"Error starting publish: {response.text}"
         else:
