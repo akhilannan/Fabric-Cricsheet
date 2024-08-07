@@ -173,41 +173,33 @@ class FabricPowerBIClient:
         retried_401 = False  # Flag to track 401 retry
 
         for attempt in range(max_retries):
-            try:
-                response = request_func(*args, **kwargs)
+            response = request_func(*args, **kwargs)
 
-                if response.status_code < 400:
-                    return response
+            if response.status_code < 400:
+                return response
 
-                if response.status_code == 401 and not retried_401:
-                    # Unauthorized, try refreshing the token once
-                    retried_401 = True
-                    self.access_token = None
-                    self._get_access_token()
-                    kwargs["headers"]["Authorization"] = f"Bearer {self.access_token}"
-                    continue  # Retry the request with the new token
+            if response.status_code == 401 and not retried_401:
+                # Unauthorized, try refreshing the token once
+                retried_401 = True
+                self.access_token = None
+                self._get_access_token()
+                kwargs["headers"]["Authorization"] = f"Bearer {self.access_token}"
+                continue  # Retry the request with the new token
 
-                if response.status_code == 429 and attempt < max_retries - 1:
-                    # Too Many Requests, use Retry-After header if available
-                    retry_after = response.headers.get("Retry-After")
-                    retry_delay = (
-                        int(retry_after)
-                        if retry_after and retry_after.isdigit()
-                        else retry_delay
-                    )
-                    print(f"Rate limit exceeded. Retrying in {retry_delay} seconds...")
-                    time.sleep(retry_delay)
-                    continue
-
-                # Raise an exception for other status codes indicating an error
-                response.raise_for_status()
-
-            except requests.exceptions.RequestException as e:
-                if attempt == max_retries - 1:
-                    print(f"Request failed after {max_retries} attempts: {e}")
-                    raise
-                print(f"Request error: {e}. Retrying in {retry_delay} seconds...")
+            if response.status_code == 429 and attempt < max_retries - 1:
+                # Too Many Requests, use Retry-After header if available
+                retry_after = response.headers.get("Retry-After")
+                retry_delay = (
+                    int(retry_after)
+                    if retry_after and retry_after.isdigit()
+                    else retry_delay
+                )
+                print(f"Rate limit exceeded. Retrying in {retry_delay} seconds...")
                 time.sleep(retry_delay)
+                continue
+
+            # Raise an exception for other status codes indicating an error
+            response.raise_for_status()
 
         raise Exception("Max retries reached. Request failed.")
 
