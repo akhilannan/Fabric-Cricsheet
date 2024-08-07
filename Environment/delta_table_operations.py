@@ -6,43 +6,43 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 try:
     from pyspark.sql import DataFrame, SparkSession, functions as F
+
+    spark = SparkSession.builder.getOrCreate()
 except ImportError:
-    DataFrame = None
-    SparkSession = None
-    F = None
+    DataFrame = SparkSession = F = spark = None
 
 try:
     from delta.tables import DeltaTable
 except ImportError:
     DeltaTable = None
 
-from fabric_utils import get_lakehouse_id, get_lakehouse_path, get_delta_tables_in_lakehouse, resolve_workspace_id
+from fabric_utils import (
+    get_lakehouse_id,
+    get_lakehouse_path,
+    get_delta_tables_in_lakehouse,
+    resolve_workspace_id,
+)
 
-
-if SparkSession is not None:
-    spark = SparkSession.builder.getOrCreate()
-else:
-    spark = None
 
 def delta_table_exists(lakehouse_name: str, tbl: str) -> bool:
-  """Check if a delta table exists at the given path.
+    """Check if a delta table exists at the given path.
 
-  Parameters:
-  path (str): The directory where the delta table is stored.
-  tbl (str): The name of the delta table.
+    Parameters:
+    path (str): The directory where the delta table is stored.
+    tbl (str): The name of the delta table.
 
-  Returns:
-  bool: True if the delta table exists, False otherwise.
-  """
-  try:
-    # Use the DeltaTable class to access the delta table
-    path = get_lakehouse_path(lakehouse_name)
-    DeltaTable.forPath(spark, os.path.join(path, tbl))
-    # If no exception is raised, the delta table exists
-    return True
-  except Exception as e:
-    # If an exception is raised, the delta table does not exist
-    return False
+    Returns:
+    bool: True if the delta table exists, False otherwise.
+    """
+    try:
+        # Use the DeltaTable class to access the delta table
+        path = get_lakehouse_path(lakehouse_name)
+        DeltaTable.forPath(spark, os.path.join(path, tbl))
+        # If no exception is raised, the delta table exists
+        return True
+    except Exception as e:
+        # If an exception is raised, the delta table does not exist
+        return False
 
 
 def read_delta_table(lakehouse_name: str, table_name: str) -> DataFrame:
@@ -56,15 +56,12 @@ def read_delta_table(lakehouse_name: str, table_name: str) -> DataFrame:
         pyspark.sql.DataFrame: A Spark DataFrame with the delta table data.
     """
     path = get_lakehouse_path(lakehouse_name)
-    return (
-        spark
-        .read
-        .format('delta')
-        .load(f"{path}/{table_name}")
-    )
+    return spark.read.format("delta").load(f"{path}/{table_name}")
 
 
-def create_or_replace_delta_table(df: DataFrame, lakehouse_name: str, table_name: str, mode_type: str = "overwrite") -> None:
+def create_or_replace_delta_table(
+    df: DataFrame, lakehouse_name: str, table_name: str, mode_type: str = "overwrite"
+) -> None:
     """Create or replace a delta table from a dataframe.
 
     Args:
@@ -78,16 +75,20 @@ def create_or_replace_delta_table(df: DataFrame, lakehouse_name: str, table_name
     """
     path = get_lakehouse_path(lakehouse_name)
     (
-        df
-        .write
-        .mode(mode_type)
+        df.write.mode(mode_type)
         .option("mergeSchema", "true")
         .format("delta")
-        .save(f'{path}/{table_name}')
+        .save(f"{path}/{table_name}")
     )
 
 
-def upsert_delta_table(lakehouse_name: str, table_name: str, df: DataFrame, merge_condition: str, update_condition: dict = None) -> None:
+def upsert_delta_table(
+    lakehouse_name: str,
+    table_name: str,
+    df: DataFrame,
+    merge_condition: str,
+    update_condition: dict = None,
+) -> None:
     """Updates or inserts rows into a delta table with the given data frame and conditions.
 
     Args:
@@ -105,22 +106,28 @@ def upsert_delta_table(lakehouse_name: str, table_name: str, df: DataFrame, merg
     if update_condition is None:
         # If update_condition is None, just insert new rows when not matched
         (
-            delta_table.alias('t')
-            .merge(df.alias('s'), merge_condition)
+            delta_table.alias("t")
+            .merge(df.alias("s"), merge_condition)
             .whenNotMatchedInsertAll()
             .execute()
         )
     else:
         # Otherwise, update existing rows when matched and insert new rows when not matched
         (
-            delta_table.alias('t')
-            .merge(df.alias('s'), merge_condition)
-            .whenMatchedUpdate(set = update_condition)
+            delta_table.alias("t")
+            .merge(df.alias("s"), merge_condition)
+            .whenMatchedUpdate(set=update_condition)
             .execute()
         )
 
 
-def create_or_insert_table(df: DataFrame, lakehouse_name: str, table_name: str, primary_key: str, merge_key: str) -> None:
+def create_or_insert_table(
+    df: DataFrame,
+    lakehouse_name: str,
+    table_name: str,
+    primary_key: str,
+    merge_key: str,
+) -> None:
     """Create or insert a delta table from a dataframe.
 
     Args:
@@ -132,7 +139,12 @@ def create_or_insert_table(df: DataFrame, lakehouse_name: str, table_name: str, 
     """
     if delta_table_exists(lakehouse_name, table_name):
         # Get the maximum value of the primary key from the existing table
-        max_primary_key = read_delta_table(lakehouse_name, table_name).agg(F.max(primary_key)).collect()[0][0] + 1
+        max_primary_key = (
+            read_delta_table(lakehouse_name, table_name)
+            .agg(F.max(primary_key))
+            .collect()[0][0]
+            + 1
+        )
         # Increment the primary key of the dataframe by the maximum value
         df = df.withColumn(primary_key, F.col(primary_key) + F.lit(max_primary_key))
         # Format the merge condition with the merge key
@@ -189,7 +201,12 @@ def get_row_count(lakehouse_or_link: str, table_name: str = None) -> int:
     return row_count
 
 
-def compare_row_count(table1_lakehouse: str, table1_name: str, table2_lakehouse: str, table2_name: str = None) -> None:
+def compare_row_count(
+    table1_lakehouse: str,
+    table1_name: str,
+    table2_lakehouse: str,
+    table2_name: str = None,
+) -> None:
     """Compare the row count of two tables and exit or print the difference.
 
     This function compares the row count of two delta tables or a delta table and a web page.
@@ -204,25 +221,28 @@ def compare_row_count(table1_lakehouse: str, table1_name: str, table2_lakehouse:
     Returns:
         None
     """
-    
+
     # Check if the first table exists as a delta table
     if delta_table_exists(table1_lakehouse, table1_name):
         # Get the row count and the match IDs from the first table
         row_count_1 = get_row_count(table1_lakehouse, table1_name)
-        
+
         # Get the row count from the second table or web page
         row_count_2 = get_row_count(table2_lakehouse, table2_name)
-        
+
         # Compare the row counts and exit or print accordingly
         if row_count_1 == row_count_2:
             # If the row counts are equal, exit the notebook with message "No new data"
             import notebookutils
+
             notebookutils.notebook.exit("No new data")
         else:
             print(f"Cricsheet has {row_count_2 - row_count_1} more matches added")
 
 
-def optimize_and_vacuum_table_api(lakehouse_name: str, table_name: str, workspace=None, client=None) -> str:
+def optimize_and_vacuum_table_api(
+    lakehouse_name: str, table_name: str, workspace=None, client=None
+) -> str:
     """
     Optimize and vacuum a table in a lakehouse.
 
@@ -238,53 +258,62 @@ def optimize_and_vacuum_table_api(lakehouse_name: str, table_name: str, workspac
     # Prepare the execution data payload
     execution_data = {
         "tableName": table_name,
-        "optimizeSettings": {
-            "vOrder": True
-        },
-        "vacuumSettings": {
-            "retentionPeriod": "7.01:00:00"
-        }
+        "optimizeSettings": {"vOrder": True},
+        "vacuumSettings": {"retentionPeriod": "7.01:00:00"},
     }
-    
+
     # Call start_on_demand_job to start the job
     job_instance_id = start_on_demand_job(
-        item_id=get_lakehouse_id(lakehouse_name, resolve_workspace_id(workspace, client=client), client=client),
+        item_id=get_lakehouse_id(
+            lakehouse_name,
+            resolve_workspace_id(workspace, client=client),
+            client=client,
+        ),
         job_type="TableMaintenance",
         execution_data=execution_data,
         workspace=resolve_workspace_id(workspace, client=client),
-        client=client
+        client=client,
     )
-    
+
     return job_instance_id
 
 
-def optimize_and_vacuum_table(lakehouse_name: str, table_name: str, retain_hours: int = None) -> bool:
-  """
-  Optimizes and vacuums a Delta table in a lakehouse.
+def optimize_and_vacuum_table(
+    lakehouse_name: str, table_name: str, retain_hours: int = None
+) -> bool:
+    """
+    Optimizes and vacuums a Delta table in a lakehouse.
 
-  Args:
-      lakehouse_name: Name of the lakehouse containing the table.
-      table_name: Name of the table to optimize and vacuum.
-      retain_hours: Optional number of hours to retain deleted data files.
+    Args:
+        lakehouse_name: Name of the lakehouse containing the table.
+        table_name: Name of the table to optimize and vacuum.
+        retain_hours: Optional number of hours to retain deleted data files.
 
-  Returns:
-      True on success, False on failure.
-  """
+    Returns:
+        True on success, False on failure.
+    """
 
-  full_table_name = f"{lakehouse_name}.{table_name}"
-  retain_syntax = ""
-  if retain_hours is not None:
-    spark.conf.set("spark.databricks.delta.retentionDurationCheck.enabled", False)
-    retain_syntax = f" RETAIN {retain_hours} HOURS"
+    full_table_name = f"{lakehouse_name}.{table_name}"
+    retain_syntax = ""
+    if retain_hours is not None:
+        spark.conf.set("spark.databricks.delta.retentionDurationCheck.enabled", False)
+        retain_syntax = f" RETAIN {retain_hours} HOURS"
 
-  try:
-    spark.sql(f"OPTIMIZE {full_table_name}")
-    spark.sql(f"VACUUM {full_table_name}{retain_syntax}")
-  except Exception as e:
-    raise Exception(f"Error optimizing and vacuuming {full_table_name}: {e}")
+    try:
+        spark.sql(f"OPTIMIZE {full_table_name}")
+        spark.sql(f"VACUUM {full_table_name}{retain_syntax}")
+    except Exception as e:
+        raise Exception(f"Error optimizing and vacuuming {full_table_name}: {e}")
 
 
-def optimize_and_vacuum_items_api(items_to_optimize_vacuum: str | dict, log_lakehouse: str = None, job_category: str = None, parent_job_name: str = None, parallelism: int = 3, client=None) -> None:
+def optimize_and_vacuum_items_api(
+    items_to_optimize_vacuum: str | dict,
+    log_lakehouse: str = None,
+    job_category: str = None,
+    parent_job_name: str = None,
+    parallelism: int = 3,
+    client=None,
+) -> None:
     """Optimize and vacuum tables in lakehouses.
 
     Args:
@@ -298,8 +327,11 @@ def optimize_and_vacuum_items_api(items_to_optimize_vacuum: str | dict, log_lake
     from job_operations import insert_or_update_job_table, get_lakehouse_job_status
 
     # Create a queue to store the pending tables
-    queue = [(item[0], item[1]) for item in prepare_optimization_items(items_to_optimize_vacuum)]
-    
+    queue = [
+        (item[0], item[1])
+        for item in prepare_optimization_items(items_to_optimize_vacuum)
+    ]
+
     # Optimize and vacuum each table in each lakehouse and store the operation ids
     job_details = {}
     # Create a list to store the running tables
@@ -310,29 +342,35 @@ def optimize_and_vacuum_items_api(items_to_optimize_vacuum: str | dict, log_lake
         # If the running list is not full and the queue is not empty, pop a table from the queue and start the operation
         while len(running) < parallelism and queue:
             lakehouse_name, table_name = queue.pop(0)
-            operation_id = optimize_and_vacuum_table_api(lakehouse_name, table_name, client=client)
+            operation_id = optimize_and_vacuum_table_api(
+                lakehouse_name, table_name, client=client
+            )
             if log_lakehouse:
                 insert_or_update_job_table(
                     lakehouse_name=log_lakehouse,
                     job_name=f"{lakehouse_name}.{table_name}",
                     parent_job_name=parent_job_name,
                     request_id=operation_id,
-                    job_category=job_category
+                    job_category=job_category,
                 )
             job_details[lakehouse_name, table_name] = operation_id
             running.append((lakehouse_name, table_name, operation_id))
         # Check the status of the running tables and remove the ones that are finished
-        for (lakehouse_name, table_name, operation_id) in running.copy():
-            operation_details = get_lakehouse_job_status(operation_id, lakehouse_name, client=client)
-            operation_status = operation_details['status']
+        for lakehouse_name, table_name, operation_id in running.copy():
+            operation_details = get_lakehouse_job_status(
+                operation_id, lakehouse_name, client=client
+            )
+            operation_status = operation_details["status"]
             if operation_status not in ["NotStarted", "InProgress"]:
                 running.remove((lakehouse_name, table_name, operation_id))
                 operation_status_dict[lakehouse_name, table_name] = operation_status
                 if log_lakehouse:
-                    start_time = dateutil.parser.isoparse(operation_details['startTimeUtc'])
-                    end_time = dateutil.parser.isoparse(operation_details['endTimeUtc'])
+                    start_time = dateutil.parser.isoparse(
+                        operation_details["startTimeUtc"]
+                    )
+                    end_time = dateutil.parser.isoparse(operation_details["endTimeUtc"])
                     duration = (end_time - start_time).total_seconds()
-                    msg = operation_details['failureReason']
+                    msg = operation_details["failureReason"]
                     insert_or_update_job_table(
                         lakehouse_name=log_lakehouse,
                         job_name=f"{lakehouse_name}.{table_name}",
@@ -341,16 +379,24 @@ def optimize_and_vacuum_items_api(items_to_optimize_vacuum: str | dict, log_lake
                         status=operation_status,
                         duration=duration,
                         job_category=job_category,
-                        message=msg
+                        message=msg,
                     )
-    
+
     # Raise an exception if any table failed to optimize
-    failed_tables = [f"{lakehouse_name}.{table_name}" for (lakehouse_name, table_name), status in operation_status_dict.items() if status == 'Failed']
+    failed_tables = [
+        f"{lakehouse_name}.{table_name}"
+        for (lakehouse_name, table_name), status in operation_status_dict.items()
+        if status == "Failed"
+    ]
     if failed_tables:
-        raise Exception(f"The following tables failed to optimize: {', '.join(failed_tables)}")
+        raise Exception(
+            f"The following tables failed to optimize: {', '.join(failed_tables)}"
+        )
 
 
-def optimize_and_vacuum_items(items_to_optimize_vacuum: str | dict, retain_hours: int = None, parallelism: int = 4) -> None:
+def optimize_and_vacuum_items(
+    items_to_optimize_vacuum: str | dict, retain_hours: int = None, parallelism: int = 4
+) -> None:
     """
     Optimizes and vacuums Delta tables in parallel across multiple lakehouses.
 
@@ -378,7 +424,9 @@ def optimize_and_vacuum_items(items_to_optimize_vacuum: str | dict, retain_hours
     print("Optimization and vacuum completed.")
 
 
-def prepare_optimization_items(items_to_optimize_vacuum: dict, retain_hours: int=None) -> list:
+def prepare_optimization_items(
+    items_to_optimize_vacuum: dict, retain_hours: int = None
+) -> list:
     """
     Prepares a list of items for optimizing and vacuuming tables in a lakehouse.
 
@@ -395,7 +443,7 @@ def prepare_optimization_items(items_to_optimize_vacuum: dict, retain_hours: int
             items_to_optimize_vacuum = ast.literal_eval(items_to_optimize_vacuum)
         except ValueError:
             items_to_optimize_vacuum = {items_to_optimize_vacuum: None}
-    
+
     items = []
     # Iterate over the lakehouses and their respective tables
     for lakehouse_name, table_list in items_to_optimize_vacuum.items():
@@ -406,5 +454,5 @@ def prepare_optimization_items(items_to_optimize_vacuum: dict, retain_hours: int
         # Create a task for each table
         for table_name in table_list:
             items.append((lakehouse_name, table_name, retain_hours))
-    
+
     return items

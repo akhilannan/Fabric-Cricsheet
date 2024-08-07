@@ -1,97 +1,269 @@
 import requests
 import time
+from datetime import datetime, timedelta
+
 
 class FabricPowerBIClient:
-    def __init__(self, tenant_id=None, client_id=None, client_secret=None, username=None, password=None, client_type='fabric'):
+    """
+    A client for interacting with the Microsoft Fabric and Power BI REST APIs.
+
+    Attributes:
+        BASE_URLS (dict): Base URLs for Fabric and Power BI API endpoints.
+        tenant_id (str, optional): Azure tenant ID for authentication.
+        client_id (str, optional): Client ID for authentication.
+        client_secret (str, optional): Client secret for authentication.
+        username (str, optional): Username for authentication.
+        password (str, optional): Password for authentication.
+        client_type (str): The type of client, either 'fabric' or 'powerbi'.
+        access_token (str, optional): Cached access token for API requests.
+        token_expiration (datetime, optional): Expiration time for the access token.
+        is_custom_client (bool): Indicates if a custom client is used.
+        client (object, optional): Instance of the sempy client if used.
+
+    Methods:
+        __init__: Initializes the client with optional authentication parameters.
+        _initialize_sempy_client: Initializes the sempy client if custom client credentials are not provided.
+        _get_access_token: Obtains a new access token using client credentials.
+        _make_request_with_retry: Makes an API request with retry logic for certain status codes.
+        request: Makes an API request using the custom client or sempy client.
+        request_with_client: Class method to make a request with an existing client instance.
+    """
+
+    BASE_URLS = {
+        "fabric": "https://api.fabric.microsoft.com",
+        "powerbi": "https://api.powerbi.com",
+    }
+
+    def __init__(
+        self,
+        tenant_id=None,
+        client_id=None,
+        client_secret=None,
+        username=None,
+        password=None,
+        client_type="fabric",
+    ):
+        """
+        Initializes the FabricPowerBIClient with optional authentication parameters.
+
+        Args:
+            tenant_id (str, optional): Azure tenant ID.
+            client_id (str, optional): Client ID for OAuth authentication.
+            client_secret (str, optional): Client secret for OAuth authentication.
+            username (str, optional): Username for OAuth password grant flow.
+            password (str, optional): Password for OAuth password grant flow.
+            client_type (str, optional): Type of client, either 'fabric' or 'powerbi'. Defaults to 'fabric'.
+        """
         self.client_type = client_type.lower()
         self.tenant_id = tenant_id
         self.client_id = client_id
         self.client_secret = client_secret
         self.username = username
         self.password = password
-        
+        self.access_token = None
+        self.token_expiration = None
+
         if tenant_id and client_id and (client_secret or (username and password)):
-            # Initialize using OAuth2 client credentials or password auth
-            self.access_token = self._get_access_token()
-            self.base_urls = {
-                'fabric': "https://api.fabric.microsoft.com",
-                'powerbi': "https://api.powerbi.com"
-            }
             self.is_custom_client = True
         else:
-            # Try to import sempy and initialize the client
-            try:
-                from sempy import fabric
-                self.client = fabric.FabricRestClient() if self.client_type == 'fabric' else fabric.PowerBIRestClient()
-                self.is_custom_client = False
-            except ImportError:
-                raise ImportError(
-                    "The Semantic Link library is not installed. Ensure you are running in a Fabric environment with the library installed. "
-                    "If you are not in a Fabric environment, provide the tenant ID, client ID, and either client secret or username and password."
-                )
-            except AttributeError:
-                raise ImportError(f"The requested client type '{self.client_type}' is not available in the 'sempy' library.")
+            self.is_custom_client = False
+            self._initialize_sempy_client()
+
+    def _initialize_sempy_client(self):
+        """
+        Initializes the sempy client if custom client credentials are not provided.
+
+        Raises:
+            ImportError: If the sempy library or the requested client type is not available.
+        """
+        try:
+            from sempy import fabric
+
+            self.client = getattr(
+                fabric, f"{self.client_type.capitalize()}RestClient"
+            )()
+        except ImportError:
+            raise ImportError(
+                "The Semantic Link library is not installed. Ensure you are running in a Fabric environment with the library installed. "
+                "If you are not in a Fabric environment, provide the tenant ID, client ID, and either client secret or username and password."
+            )
+        except AttributeError:
+            raise ImportError(
+                f"The requested client type '{self.client_type}' is not available in the 'sempy' library."
+            )
 
     def _get_access_token(self):
-        url = f"https://login.microsoftonline.com/{self.tenant_id}/oauth2/v2.0/token"
-        scope = f"https://api.fabric.microsoft.com/.default" if self.client_type == 'fabric' else "https://analysis.windows.net/powerbi/api/.default"
-        
+        """
+        Obtains a new access token using client credentials.
+
+        Returns:
+            str: The access token.
+
+        Raises:
+            ValueError: If neither client_secret nor username/password is provided.
+            requests.exceptions.RequestException: If the token request fails.
+        """
+        # Check if the current token is still valid
+        if self.access_token and datetime.now() < self.token_expiration:
+            return self.access_token
+
+        # Define constants
+        DEFAULT_EXPIRES_IN = 3600
+        TOKEN_URL = (
+            f"https://login.microsoftonline.com/{self.tenant_id}/oauth2/v2.0/token"
+        )
+
+        # Determine scope from client type
+        if self.client_type in self.BASE_URLS:
+            base_url = self.BASE_URLS[self.client_type]
+            scope = f"{base_url.rstrip('/')}/.default"
+        else:
+            raise ValueError("Invalid client_type. Must be 'fabric' or 'powerbi'.")
+
+        # Determine payload based on credentials provided
         if self.client_secret:
-            # Client credentials flow
             payload = {
-                'grant_type': 'client_credentials',
-                'client_id': self.client_id,
-                'client_secret': self.client_secret,
-                'scope': scope
+                "grant_type": "client_credentials",
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "scope": scope,
             }
         elif self.username and self.password:
-            # Resource Owner Password Credentials (ROPC) flow
             payload = {
-                'grant_type': 'password',
-                'client_id': self.client_id,
-                'username': self.username,
-                'password': self.password,
-                'scope': scope
+                "grant_type": "password",
+                "client_id": self.client_id,
+                "username": self.username,
+                "password": self.password,
+                "scope": scope,
             }
         else:
-            raise ValueError("Either client_secret or both username and password must be provided")
+            raise ValueError(
+                "Either client_secret or both username and password must be provided"
+            )
 
-        response = self._make_request_with_retry(requests.post, url, data=payload)
-        return response.json().get('access_token')
+        # Request the access token
+        response = requests.post(TOKEN_URL, data=payload)
+        response.raise_for_status()
+        token_data = response.json()
+
+        # Set the access token and its expiration
+        self.access_token = token_data.get("access_token")
+        expires_in = token_data.get("expires_in", DEFAULT_EXPIRES_IN)
+        self.token_expiration = datetime.now() + timedelta(seconds=expires_in)
+
+        return self.access_token
 
     def _make_request_with_retry(self, request_func, *args, **kwargs):
+        """
+        Makes a request with retry logic for specific error codes.
+
+        Args:
+            request_func (callable): The function to make the request.
+            *args: Positional arguments to pass to the request function.
+            **kwargs: Keyword arguments to pass to the request function.
+
+        Returns:
+            requests.Response: The response object.
+
+        Raises:
+            Exception: If the maximum number of retries is reached or an unrecoverable error occurs.
+        """
         max_retries = 5
-        retry_delay = 10  # seconds
+        retry_delay = 10  # Initial delay in seconds
+        retried_401 = False  # Flag to track 401 retry
 
         for attempt in range(max_retries):
-            response = request_func(*args, **kwargs)
-            
-            if response.status_code == 429 and attempt < max_retries - 1:
-                print(f"Received 429 response. Retrying in {retry_delay} seconds...")
+            try:
+                response = request_func(*args, **kwargs)
+
+                if response.status_code < 400:
+                    return response
+
+                if response.status_code == 401 and not retried_401:
+                    # Unauthorized, try refreshing the token once
+                    retried_401 = True
+                    self.access_token = None
+                    self._get_access_token()
+                    kwargs["headers"]["Authorization"] = f"Bearer {self.access_token}"
+                    continue  # Retry the request with the new token
+
+                if response.status_code == 429 and attempt < max_retries - 1:
+                    # Too Many Requests, use Retry-After header if available
+                    retry_after = response.headers.get("Retry-After")
+                    retry_delay = (
+                        int(retry_after)
+                        if retry_after and retry_after.isdigit()
+                        else retry_delay
+                    )
+                    print(f"Rate limit exceeded. Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    continue
+
+                # Raise an exception for other status codes indicating an error
+                response.raise_for_status()
+
+            except requests.exceptions.RequestException as e:
+                if attempt == max_retries - 1:
+                    print(f"Request failed after {max_retries} attempts: {e}")
+                    raise
+                print(f"Request error: {e}. Retrying in {retry_delay} seconds...")
                 time.sleep(retry_delay)
-                continue  # Skip the rest of the loop and retry
 
-            # Raise an HTTPError for bad responses (4xx and 5xx)
-            response.raise_for_status()
-
-            # Return the response if the request was successful
-            return response
-
+        raise Exception("Max retries reached. Request failed.")
 
     def request(self, method, url, **kwargs):
+        """
+        Makes an HTTP request using either the custom client or the sempy client.
+
+        Args:
+            method (str): The HTTP method (e.g., 'GET', 'POST').
+            url (str): The URL endpoint (relative or full).
+            **kwargs: Additional arguments passed to the request function.
+
+        Returns:
+            requests.Response: The response object.
+        """
+        # Determine the base URL based on the client type
+        base_url = self.BASE_URLS.get(self.client_type)
+        if not base_url:
+            raise ValueError(
+                f"Invalid client_type '{self.client_type}'. Must be 'fabric' or 'powerbi'."
+            )
+
+        # Prepend base URL if it's not already included in the URL
+        if not url.startswith(base_url):
+            url = f"{base_url.rstrip('/')}/{url.lstrip('/')}"
+
         if self.is_custom_client:
-            # Prepend the base URL if it's not already included
-            base_url = self.base_urls[self.client_type]
-            if not url.startswith(base_url):
-                url = base_url.rstrip('/') + '/' + url.lstrip('/')
-            
-            headers = kwargs.get('headers', {})
-            headers['Authorization'] = f"Bearer {self.access_token}"
-            kwargs['headers'] = headers
-            
-            response = self._make_request_with_retry(requests.request, method, url, **kwargs)
+            # Set the Authorization header for custom clients
+            headers = kwargs.setdefault("headers", {})
+            headers["Authorization"] = f"Bearer {self._get_access_token()}"
+
+            # Make the request using the requests library
+            response = self._make_request_with_retry(
+                requests.request, method, url, **kwargs
+            )
         else:
             # Use the sempy client
             client_method = getattr(self.client, method.lower())
             response = self._make_request_with_retry(client_method, url, **kwargs)
+
         return response
+
+    @classmethod
+    def request_with_client(cls, method, url, client=None, **kwargs):
+        """
+        Class method to make a request with an existing client instance.
+
+        Args:
+            method (str): HTTP method (e.g., 'GET', 'POST').
+            url (str): The endpoint URL.
+            client (FabricPowerBIClient, optional): An existing client instance. Defaults to None.
+            **kwargs: Additional arguments to pass to the request function.
+
+        Returns:
+            requests.Response: The response from the API request.
+        """
+        if client is None:
+            client = cls()
+        return client.request(method, url, **kwargs)
