@@ -66,6 +66,7 @@ class FabricPowerBIClient:
 
         if tenant_id and client_id and (client_secret or (username and password)):
             self.is_custom_client = True
+            self.client = requests.Session()
         else:
             self.is_custom_client = False
             self._initialize_sempy_client()
@@ -143,7 +144,7 @@ class FabricPowerBIClient:
             )
 
         # Request the access token
-        response = requests.post(TOKEN_URL, data=payload)
+        response = self.client.post(TOKEN_URL, data=payload)
         response.raise_for_status()
         token_data = response.json()
 
@@ -183,8 +184,7 @@ class FabricPowerBIClient:
                 # Unauthorized, try refreshing the token once
                 retried_401 = True
                 self.access_token = None
-                self._get_access_token()
-                kwargs["headers"]["Authorization"] = f"Bearer {self.access_token}"
+                kwargs["headers"]["Authorization"] = f"Bearer {self._get_access_token()}"
                 continue  # Retry the request with the new token
 
             if response.status_code == 429 and attempt < max_retries - 1:
@@ -234,21 +234,13 @@ class FabricPowerBIClient:
             # Set the Authorization header for custom clients
             headers = kwargs.setdefault("headers", {})
             headers["Authorization"] = f"Bearer {self._get_access_token()}"
-            request_func = requests.request
-        else:
-            # Use the sempy client
-            request_func = getattr(self.client, method.lower())
-            # Remove 'url' from kwargs to avoid duplicate argument error
-            kwargs.pop('url', None)
 
+        request_func = getattr(self.client, method.lower())
         all_items = []
-        params = kwargs.get('params', {})
+        params = kwargs.get("params", {})
 
         while True:
-            if self.is_custom_client:
-                response = self._make_request_with_retry(request_func, method, url, **kwargs)
-            else:
-                response = self._make_request_with_retry(request_func, url, **kwargs)
+            response = self._make_request_with_retry(request_func, url, **kwargs)
 
             try:
                 data = response.json()
@@ -256,7 +248,7 @@ class FabricPowerBIClient:
                 data = {}
 
             continuation_token = data.get("continuationToken")
-            
+
             # Extract and accumulate items
             items = data.get("value") or data.get("data") or []
             all_items.extend(items)
@@ -265,8 +257,8 @@ class FabricPowerBIClient:
                 break
 
             # Set continuationToken in params for the next request
-            params['continuationToken'] = continuation_token
-            kwargs['params'] = params
+            params["continuationToken"] = continuation_token
+            kwargs["params"] = params
 
         if return_json:
             return all_items if all_items else data
