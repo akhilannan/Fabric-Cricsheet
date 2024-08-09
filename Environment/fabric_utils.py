@@ -304,32 +304,25 @@ def get_create_or_update_fabric_item(
         return item_id  # Item exists and doesn't need updating, so just return its ID
 
     # Perform the API request based on the method
-    try:
-        response = FPC.request_with_client(
-            method, url, json=request_body, client=client
-        )
-        status_code = response.status_code
-        msg = f"'{item_name}' {item_type} {action}."
+    response = FPC.request_with_client(method, url, json=request_body, client=client)
+    status_code = response.status_code
+    msg = f"'{item_name}' {item_type} {action}."
 
-        # Check the response status code to determine the outcome
-        if status_code in (200, 201):
-            print(f"Operation succeeded: {msg}.")
-        elif status_code == 202:
-            # If status code indicates a pending operation, check its status
-            try:
-                poll_operation_status(
-                    response.headers["x-ms-operation-id"], msg, client=client
-                )
-            except Exception as e:
-                print(f"Operation failed: {str(e)}")
-                return None
-        else:
-            # If operation failed, print the status code
-            print(f"Operation failed with status code: {status_code}")
+    # Check the response status code to determine the outcome
+    if status_code in (200, 201):
+        print(f"Operation succeeded: {msg}.")
+    elif status_code == 202:
+        # If status code indicates a pending operation, check its status
+        try:
+            poll_operation_status(
+                response.headers["x-ms-operation-id"], msg, client=client
+            )
+        except Exception as e:
+            print(f"Operation failed: {str(e)}")
             return None
-
-    except Exception as e:
-        print(f"Error performing API request: {e}")
+    else:
+        # If operation failed, print the status code
+        print(f"Operation failed with status code: {status_code}")
         return None
 
     return item_id or get_item_id(item_name, item_type, workspace_id, client)

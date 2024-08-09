@@ -18,21 +18,26 @@ class FabricPowerBIClient:
         client_type (str): The type of client, either 'fabric' or 'powerbi'.
         access_token (str, optional): Cached access token for API requests.
         token_expiration (datetime, optional): Expiration time for the access token.
-        is_custom_client (bool): Indicates if a custom client is used.
         client (object, optional): Instance of the sempy client if used.
 
     Methods:
         __init__: Initializes the client with optional authentication parameters.
+        _initialize_custom_client: Initializes the custom client and sets up the Authorization header.
         _initialize_sempy_client: Initializes the sempy client if custom client credentials are not provided.
-        _get_access_token: Obtains a new access token using client credentials.
+        _initialize_access_token: Obtains and initializes the access token during client initialization or when needed.
+        _fetch_access_token: Fetches the access token from the OAuth2 endpoint.
+        _build_token_payload: Builds the payload for the token request based on provided credentials.
+        _get_scope: Determines the scope based on the client type.
+        _generate_invalid_client_type_message: Generates the error message for an invalid client type.
         _make_request_with_retry: Makes an API request with retry logic for certain status codes.
-        request: Makes an API request using the custom client or sempy client.
+        _update_authorization_header: Updates the Authorization header with the new access token.
+        request: Makes an HTTP request using the custom client or sempy client, handling pagination if needed.
         request_with_client: Class method to make a request with an existing client instance.
     """
 
     BASE_URLS = {
-        "fabric": "https://api.fabric.microsoft.com",
-        "powerbi": "https://api.powerbi.com",
+        "FabricRestClient": "https://api.fabric.microsoft.com",
+        "PowerBIRestClient": "https://api.powerbi.com",
     }
 
     def __init__(
@@ -42,7 +47,7 @@ class FabricPowerBIClient:
         client_secret=None,
         username=None,
         password=None,
-        client_type="fabric",
+        client_type="FabricRestClient",
     ):
         """
         Initializes the FabricPowerBIClient with optional authentication parameters.
@@ -55,7 +60,7 @@ class FabricPowerBIClient:
             password (str, optional): Password for OAuth password grant flow.
             client_type (str, optional): Type of client, either 'fabric' or 'powerbi'. Defaults to 'fabric'.
         """
-        self.client_type = client_type.lower()
+        self.client_type = client_type
         self.tenant_id = tenant_id
         self.client_id = client_id
         self.client_secret = client_secret
@@ -65,11 +70,19 @@ class FabricPowerBIClient:
         self.token_expiration = None
 
         if tenant_id and client_id and (client_secret or (username and password)):
-            self.is_custom_client = True
-            self.client = requests.Session()
+            self._initialize_custom_client()
         else:
-            self.is_custom_client = False
             self._initialize_sempy_client()
+
+    def _initialize_custom_client(self):
+        """
+        Initializes the custom client, obtains the access token, and sets up the Authorization header.
+        """
+        self.client = requests.Session()
+        self._initialize_access_token()  # Get and set the access token
+
+        # Set the Authorization header for future requests
+        self._update_authorization_header()
 
     def _initialize_sempy_client(self):
         """
@@ -81,79 +94,96 @@ class FabricPowerBIClient:
         try:
             from sempy import fabric
 
-            self.client = getattr(
-                fabric, f"{self.client_type.capitalize()}RestClient"
-            )()
+            self.client = getattr(fabric, self.client_type)()
         except ImportError:
             raise ImportError(
                 "The Semantic Link library is not installed. Ensure you are running in a Fabric environment with the library installed. "
                 "If you are not in a Fabric environment, provide the tenant ID, client ID, and either client secret or username and password."
             )
         except AttributeError:
-            raise ImportError(
-                f"The requested client type '{self.client_type}' is not available in the 'sempy' library."
-            )
+            raise ImportError(self._generate_invalid_client_type_message())
 
-    def _get_access_token(self):
+    def _initialize_access_token(self):
         """
-        Obtains a new access token using client credentials.
+        Obtains and initializes the access token during client initialization or when needed.
+        """
+        # Check if the current token is still valid with a buffer
+        if self.access_token and datetime.now() < (
+            self.token_expiration - timedelta(seconds=60)
+        ):
+            return
+
+        # Request the new token
+        token_data = self._fetch_access_token()
+
+        # Set the access token and its expiration
+        self.access_token = token_data.get("access_token")
+        expires_in = token_data.get("expires_in", 3600)
+        self.token_expiration = datetime.now() + timedelta(seconds=expires_in)
+
+    def _fetch_access_token(self):
+        """
+        Fetches the access token from the OAuth2 endpoint.
 
         Returns:
-            str: The access token.
+            dict: The token response containing the access token and its expiration time.
+        """
+        response = self.client.post(
+            f"https://login.microsoftonline.com/{self.tenant_id}/oauth2/v2.0/token",
+            data=self._build_token_payload(),
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def _build_token_payload(self):
+        """
+        Builds the payload for the token request based on provided credentials.
+
+        Returns:
+            dict: The payload for the token request.
 
         Raises:
-            ValueError: If neither client_secret nor username/password is provided.
-            requests.exceptions.RequestException: If the token request fails.
+            ValueError: If neither client_secret nor both username and password are provided.
         """
-        # Check if the current token is still valid
-        if self.access_token and datetime.now() < self.token_expiration:
-            return self.access_token
-
-        # Define constants
-        DEFAULT_EXPIRES_IN = 3600
-        TOKEN_URL = (
-            f"https://login.microsoftonline.com/{self.tenant_id}/oauth2/v2.0/token"
-        )
-
-        # Determine scope from client type
-        if self.client_type in self.BASE_URLS:
-            base_url = self.BASE_URLS[self.client_type]
-            scope = f"{base_url.rstrip('/')}/.default"
-        else:
-            raise ValueError("Invalid client_type. Must be 'fabric' or 'powerbi'.")
-
-        # Determine payload based on credentials provided
         if self.client_secret:
-            payload = {
+            return {
                 "grant_type": "client_credentials",
                 "client_id": self.client_id,
                 "client_secret": self.client_secret,
-                "scope": scope,
+                "scope": self._get_scope(),
             }
         elif self.username and self.password:
-            payload = {
+            return {
                 "grant_type": "password",
                 "client_id": self.client_id,
                 "username": self.username,
                 "password": self.password,
-                "scope": scope,
+                "scope": self._get_scope(),
             }
         else:
             raise ValueError(
                 "Either client_secret or both username and password must be provided"
             )
 
-        # Request the access token
-        response = self.client.post(TOKEN_URL, data=payload)
-        response.raise_for_status()
-        token_data = response.json()
+    def _get_scope(self):
+        """
+        Determines the scope based on the client type.
 
-        # Set the access token and its expiration
-        self.access_token = token_data.get("access_token")
-        expires_in = token_data.get("expires_in", DEFAULT_EXPIRES_IN)
-        self.token_expiration = datetime.now() + timedelta(seconds=expires_in)
+        Returns:
+            str: The scope for the token request.
+        """
+        base_url = self.BASE_URLS[self.client_type]
+        return f"{base_url.rstrip('/')}/.default"
 
-        return self.access_token
+    def _generate_invalid_client_type_message(self):
+        """
+        Generates the error message for an invalid client type.
+
+        Returns:
+            str: The error message indicating the invalid client type.
+        """
+        valid_types = ", ".join(self.BASE_URLS.keys())
+        return f"Invalid client_type '{self.client_type}'. Must be {valid_types}."
 
     def _make_request_with_retry(self, request_func, *args, **kwargs):
         """
@@ -184,7 +214,8 @@ class FabricPowerBIClient:
                 # Unauthorized, try refreshing the token once
                 retried_401 = True
                 self.access_token = None
-                kwargs["headers"]["Authorization"] = f"Bearer {self._get_access_token()}"
+                self._initialize_access_token()  # Refresh the token
+                self._update_authorization_header()  # Update the Authorization header
                 continue  # Retry the request with the new token
 
             if response.status_code == 429 and attempt < max_retries - 1:
@@ -195,7 +226,6 @@ class FabricPowerBIClient:
                     if retry_after and retry_after.isdigit()
                     else retry_delay
                 )
-                print(f"Rate limit exceeded. Retrying in {retry_delay} seconds...")
                 time.sleep(retry_delay)
                 continue
 
@@ -203,6 +233,12 @@ class FabricPowerBIClient:
             response.raise_for_status()
 
         raise Exception("Max retries reached. Request failed.")
+
+    def _update_authorization_header(self):
+        """
+        Updates the Authorization header with the new access token.
+        """
+        self.client.headers.update({"Authorization": f"Bearer {self.access_token}"})
 
     def request(self, method, url, return_json=False, **kwargs):
         """
@@ -222,36 +258,42 @@ class FabricPowerBIClient:
         # Determine the base URL based on the client type
         base_url = self.BASE_URLS.get(self.client_type)
         if not base_url:
-            raise ValueError(
-                f"Invalid client_type '{self.client_type}'. Must be 'fabric' or 'powerbi'."
-            )
+            raise ValueError(self._generate_invalid_client_type_message())
 
         # Prepend base URL if it's not already included in the URL
         if not url.startswith(base_url):
             url = f"{base_url.rstrip('/')}/{url.lstrip('/')}"
 
-        if self.is_custom_client:
-            # Set the Authorization header for custom clients
-            headers = kwargs.setdefault("headers", {})
-            headers["Authorization"] = f"Bearer {self._get_access_token()}"
-
         request_func = getattr(self.client, method.lower())
         all_items = []
         params = kwargs.get("params", {})
+
+        def get_data_key(data):
+            """
+            Determines the key to use for extracting data from the response.
+
+            Args:
+                data (dict): The JSON response data.
+
+            Returns:
+                str: The key used to extract data, either 'value' or 'data'.
+            """
+            return next((key for key in ["value", "data"] if key in data), None)
 
         while True:
             response = self._make_request_with_retry(request_func, url, **kwargs)
 
             try:
-                data = response.json()
+                data = response.json() or {}
             except ValueError:
                 data = {}
 
             continuation_token = data.get("continuationToken")
 
             # Extract and accumulate items
-            items = data.get("value") or data.get("data") or []
-            all_items.extend(items)
+            data_key = get_data_key(data)
+            if data_key:
+                all_items.extend(data[data_key])
 
             if not continuation_token:
                 break
@@ -261,10 +303,15 @@ class FabricPowerBIClient:
             kwargs["params"] = params
 
         if return_json:
-            return all_items if all_items else data
+            # If all_items is empty but data had "value" or "data", return an empty array
+            return all_items or ([] if data_key else data)
         else:
             if all_items:
-                response._content = json.dumps(all_items).encode("utf-8")
+                # Update the original response content
+                data[data_key] = all_items
+
+                response._content = json.dumps(data).encode("utf-8")
+
             return response
 
     @classmethod
