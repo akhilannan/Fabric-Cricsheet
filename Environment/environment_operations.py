@@ -110,11 +110,10 @@ def get_publish_state(
             response = FPC.request_with_client(
                 "GET",
                 f"/v1/workspaces/{workspace_id}/environments/{environment_id}",
+                return_json=True,
                 client=client,
             )
-            publish_details = (
-                response.json().get("properties", {}).get("publishDetails", {})
-            )
+            publish_details = response.get("properties", {}).get("publishDetails", {})
             return publish_details.get("state", "Unknown")
         else:
             return "Environment ID not provided."
@@ -189,9 +188,9 @@ def delete_existing_libraries_and_publish(
     try:
         # Check for existing custom libraries
         response = FPC.request_with_client(
-            "GET", f"{base_endpoint}/libraries", client=client
+            "GET", f"{base_endpoint}/libraries", return_json=True, client=client
         )
-        custom_libraries = response.json().get("customLibraries", {})
+        custom_libraries = response.get("customLibraries", {})
 
         # Extract list of files to delete
         files_to_delete = [

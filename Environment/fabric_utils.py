@@ -28,8 +28,8 @@ def poll_operation_status(operation_id: str, message: str = None, client: FPC = 
     """
     while True:
         response = FPC.request_with_client(
-            "GET", f"/v1/operations/{operation_id}", client=client
-        ).json()
+            "GET", f"/v1/operations/{operation_id}", return_json=True, client=client
+        )
         status = response.get("status")
 
         if status == "Succeeded":
@@ -45,48 +45,6 @@ def poll_operation_status(operation_id: str, message: str = None, client: FPC = 
             )
 
         time.sleep(5)
-
-
-def get_all_items_with_pagination(
-    endpoint: str, params: dict = None, client: FPC = None
-) -> list:
-    """
-    Fetch all items from a paginated API endpoint.
-
-    Args:
-        endpoint (str): The API endpoint to fetch data from.
-        params (dict, optional): Additional query parameters for the API request.
-        client (FPC, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
-
-    Returns:
-        list: A list of all items retrieved from the API.
-    """
-    if params is None:
-        params = {}
-
-    all_items = []
-
-    while True:
-        try:
-            response = FPC.request_with_client(
-                "GET", endpoint, params=params, client=client
-            )
-            data = response.json()
-
-            items = data.get("value", data.get("data", []))
-            all_items.extend(items)
-
-            continuation_token = data.get("continuationToken")
-            if not continuation_token:
-                break
-
-            params["continuationToken"] = continuation_token
-
-        except Exception as e:
-            print(f"Error fetching data: {e}")
-            break
-
-    return all_items
 
 
 def resolve_workspace_id(workspace: str, client=None) -> str:
@@ -109,7 +67,9 @@ def resolve_workspace_id(workspace: str, client=None) -> str:
         return fabric.resolve_workspace_id(workspace)
     except (ImportError, AttributeError):
         # Fallback logic if sempy or the method isn't available
-        workspaces = get_all_items_with_pagination("/v1/workspaces", client=client)
+        workspaces = FPC.request_with_client(
+            "GET", "/v1/workspaces", return_json=True, client=client
+        )
 
         for workspace_item in workspaces:
             if workspace in (workspace_item["id"], workspace_item["displayName"]):
@@ -128,8 +88,9 @@ def get_fabric_capacities(client=None) -> list:
     Returns:
         List[Dict[str, Any]]: A list of fabric capacities that are active and do not have SKU 'PP3'.
     """
-    endpoint = "/v1/capacities"
-    all_capacities = get_all_items_with_pagination(endpoint, client=client)
+    all_capacities = FPC.request_with_client(
+        "GET", "/v1/capacities", return_json=True, client=client
+    )
 
     # Filter the capacities
     filtered_capacities = [
@@ -159,8 +120,12 @@ def get_fabric_items(
     workspace_id = resolve_workspace_id(workspace, client=client)
     params = {"type": item_type} if item_type else {}
 
-    all_items = get_all_items_with_pagination(
-        f"/v1/workspaces/{workspace_id}/items", params, client=client
+    all_items = FPC.request_with_client(
+        "GET",
+        f"/v1/workspaces/{workspace_id}/items",
+        params=params,
+        return_json=True,
+        client=client,
     )
 
     if item_name:
@@ -266,14 +231,11 @@ def get_or_create_fabric_workspace(
         try:
             # Make the POST request to create the workspace
             response = FPC.request_with_client(
-                "POST", "/v1/workspaces", json=body, client=client
+                "POST", "/v1/workspaces", json=body, return_json=True, client=client
             )
 
-            # Parse the response JSON
-            data = response.json()
-
             # Return the ID of the newly created workspace
-            return data.get("id")
+            return response.get("id")
 
         except Exception as e:
             print(f"Error creating workspace: {e}")
@@ -540,8 +502,10 @@ def get_delta_tables_in_lakehouse(
     try:
         workspace_id = resolve_workspace_id(workspace, client=client)
         lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id, client=client)
-        tables = get_all_items_with_pagination(
+        tables = FPC.request_with_client(
+            "GET",
             f"/v1/workspaces/{workspace_id}/lakehouses/{lakehouse_id}/tables",
+            return_json=True,
             client=client,
         )
 

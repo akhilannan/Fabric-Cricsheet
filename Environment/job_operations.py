@@ -330,9 +330,10 @@ def get_item_job_instance(
         response = FPC.request_with_client(
             "GET",
             f"/v1/workspaces/{workspace_id}/items/{item_id}/jobs/instances/{job_instance_id}",
+            return_json=True,
             client=client,
         )
-        return response.json()
+        return response
     except Exception as e:
         print(f"Error fetching job status: {e}")
         return None

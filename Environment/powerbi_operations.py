@@ -534,14 +534,12 @@ def get_enhanced_refresh_details(
 
     try:
         # Make the API call
-        response = FPC.request_with_client(
+        refresh_details = FPC.request_with_client(
             "GET",
             f"/v1.0/myorg/groups/{workspace_id}/datasets/{semantic_model_id}/refreshes/{refresh_request_id}",
+            return_json=True,
             client=client,
         )
-
-        # Parse the response
-        refresh_details = response.json()
 
         # Convert startTime to a timezone-aware datetime object
         tz_info = datetime.timezone.utc
@@ -593,11 +591,12 @@ def cancel_enhanced_refresh(
         response = FPC.request_with_client(
             "DELETE",
             f"/v1.0/myorg/groups/{workspace_id}/datasets/{dataset_id}/refreshes/{request_id}",
+            return_json=True,
             client=client,
         )
 
         # Return the JSON response as a dictionary
-        return response.json()
+        return response
     except Exception as e:
         print(f"Error canceling refresh request: {e}")
         raise

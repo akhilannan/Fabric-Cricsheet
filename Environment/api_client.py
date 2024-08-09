@@ -1,5 +1,6 @@
 import requests
 import time
+import json
 from datetime import datetime, timedelta
 
 
@@ -203,17 +204,20 @@ class FabricPowerBIClient:
 
         raise Exception("Max retries reached. Request failed.")
 
-    def request(self, method, url, **kwargs):
+    def request(self, method, url, return_json=False, **kwargs):
         """
         Makes an HTTP request using either the custom client or the sempy client.
+        Automatically handles pagination if a continuationToken is present in the response.
+        Returns the final response object with only consolidated data in the content.
 
         Args:
             method (str): The HTTP method (e.g., 'GET', 'POST').
             url (str): The URL endpoint (relative or full).
+            return_json (bool): If True, returns the JSON data directly instead of the response object.
             **kwargs: Additional arguments passed to the request function.
 
         Returns:
-            requests.Response: The response object.
+            requests.Response or dict: The response object or JSON data, depending on return_json.
         """
         # Determine the base URL based on the client type
         base_url = self.BASE_URLS.get(self.client_type)
@@ -230,20 +234,49 @@ class FabricPowerBIClient:
             # Set the Authorization header for custom clients
             headers = kwargs.setdefault("headers", {})
             headers["Authorization"] = f"Bearer {self._get_access_token()}"
-
-            # Make the request using the requests library
-            response = self._make_request_with_retry(
-                requests.request, method, url, **kwargs
-            )
+            request_func = requests.request
         else:
             # Use the sempy client
-            client_method = getattr(self.client, method.lower())
-            response = self._make_request_with_retry(client_method, url, **kwargs)
+            request_func = getattr(self.client, method.lower())
+            # Remove 'url' from kwargs to avoid duplicate argument error
+            kwargs.pop('url', None)
 
-        return response
+        all_items = []
+        params = kwargs.get('params', {})
+
+        while True:
+            if self.is_custom_client:
+                response = self._make_request_with_retry(request_func, method, url, **kwargs)
+            else:
+                response = self._make_request_with_retry(request_func, url, **kwargs)
+
+            try:
+                data = response.json()
+            except ValueError:
+                data = {}
+
+            continuation_token = data.get("continuationToken")
+            
+            # Extract and accumulate items
+            items = data.get("value") or data.get("data") or []
+            all_items.extend(items)
+
+            if not continuation_token:
+                break
+
+            # Set continuationToken in params for the next request
+            params['continuationToken'] = continuation_token
+            kwargs['params'] = params
+
+        if return_json:
+            return all_items if all_items else data
+        else:
+            if all_items:
+                response._content = json.dumps(all_items).encode("utf-8")
+            return response
 
     @classmethod
-    def request_with_client(cls, method, url, client=None, **kwargs):
+    def request_with_client(cls, method, url, return_json=False, client=None, **kwargs):
         """
         Class method to make a request with an existing client instance.
 
@@ -258,4 +291,4 @@ class FabricPowerBIClient:
         """
         if client is None:
             client = cls()
-        return client.request(method, url, **kwargs)
+        return client.request(method, url, return_json, **kwargs)
