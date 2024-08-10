@@ -2,6 +2,7 @@ import requests
 import time
 import json
 from datetime import datetime, timedelta
+from threading import Lock
 
 
 class FabricPowerBIClient:
@@ -15,16 +16,18 @@ class FabricPowerBIClient:
         client_secret (str, optional): Client secret for authentication.
         username (str, optional): Username for authentication.
         password (str, optional): Password for authentication.
-        client_type (str): The type of client, either 'fabric' or 'powerbi'.
+        client_type (str): The type of client, either 'FabricRestClient' or 'PowerBIRestClient'.
         access_token (str, optional): Cached access token for API requests.
         token_expiration (datetime, optional): Expiration time for the access token.
-        client (object, optional): Instance of the sempy client if used.
+        token_lock (Lock): A threading lock to manage concurrent access to the token.
+        client (requests.Session or sempy client): Instance of the requests.Session or sempy client.
 
     Methods:
         __init__: Initializes the client with optional authentication parameters.
         _initialize_custom_client: Initializes the custom client and sets up the Authorization header.
         _initialize_sempy_client: Initializes the sempy client if custom client credentials are not provided.
         _initialize_access_token: Obtains and initializes the access token during client initialization or when needed.
+        _ensure_token_valid: Ensures the access token is still valid or refreshes it if close to expiration.
         _fetch_access_token: Fetches the access token from the OAuth2 endpoint.
         _build_token_payload: Builds the payload for the token request based on provided credentials.
         _get_scope: Determines the scope based on the client type.
@@ -53,21 +56,22 @@ class FabricPowerBIClient:
         Initializes the FabricPowerBIClient with optional authentication parameters.
 
         Args:
-            tenant_id (str, optional): Azure tenant ID.
+            tenant_id (str, optional): Azure tenant ID for authentication.
             client_id (str, optional): Client ID for OAuth authentication.
             client_secret (str, optional): Client secret for OAuth authentication.
             username (str, optional): Username for OAuth password grant flow.
             password (str, optional): Password for OAuth password grant flow.
-            client_type (str, optional): Type of client, either 'fabric' or 'powerbi'. Defaults to 'fabric'.
+            client_type (str, optional): Type of client, either 'FabricRestClient' or 'PowerBIRestClient'. Defaults to 'FabricRestClient'.
         """
         self.client_type = client_type
-        self.tenant_id = tenant_id
-        self.client_id = client_id
-        self.client_secret = client_secret
-        self.username = username
-        self.password = password
-        self.access_token = None
+        self.__tenant_id = tenant_id
+        self.__client_id = client_id
+        self.__client_secret = client_secret
+        self.__username = username
+        self.__password = password
+        self.__access_token = None
         self.token_expiration = None
+        self.token_lock = Lock()  # Lock to manage concurrent access to the toke
 
         if tenant_id and client_id and (client_secret or (username and password)):
             self._initialize_custom_client()
@@ -79,17 +83,14 @@ class FabricPowerBIClient:
         Initializes the custom client, obtains the access token, and sets up the Authorization header.
         """
         self.client = requests.Session()
-        self._initialize_access_token()  # Get and set the access token
-
-        # Set the Authorization header for future requests
-        self._update_authorization_header()
+        self._initialize_access_token()
 
     def _initialize_sempy_client(self):
         """
         Initializes the sempy client if custom client credentials are not provided.
 
         Raises:
-            ImportError: If the sempy library or the requested client type is not available.
+            ImportError: If the sempy library is not available or the requested client type is invalid.
         """
         try:
             from sempy import fabric
@@ -97,29 +98,37 @@ class FabricPowerBIClient:
             self.client = getattr(fabric, self.client_type)()
         except ImportError:
             raise ImportError(
-                "The Semantic Link library is not installed. Ensure you are running in a Fabric environment with the library installed. "
-                "If you are not in a Fabric environment, provide the tenant ID, client ID, and either client secret or username and password."
+                "Please provide the tenant ID, client ID, and either client secret or username and password."
+                "Otherwise, execute in Fabric environment having Semantic Link library installed."
             )
         except AttributeError:
             raise ImportError(self._generate_invalid_client_type_message())
 
     def _initialize_access_token(self):
         """
-        Obtains and initializes the access token during client initialization or when needed.
+        Fetches a new access token, updates the Authorization header,
+        and records the token's expiration time.
         """
-        # Check if the current token is still valid with a buffer
-        if self.access_token and datetime.now() < (
-            self.token_expiration - timedelta(seconds=60)
-        ):
-            return
+        with self.token_lock:
+            token_data = self._fetch_access_token()
+            self.__access_token = token_data.get("access_token")
+            expires_in = token_data.get("expires_in", 3600)
+            self.token_expiration = datetime.now() + timedelta(seconds=expires_in)
+            self._update_authorization_header()
 
-        # Request the new token
-        token_data = self._fetch_access_token()
+    def _ensure_token_valid(self, threshold_seconds=300):
+        """
+        Checks if the token is nearing expiration and refreshes it if necessary.
 
-        # Set the access token and its expiration
-        self.access_token = token_data.get("access_token")
-        expires_in = token_data.get("expires_in", 3600)
-        self.token_expiration = datetime.now() + timedelta(seconds=expires_in)
+        Args:
+            threshold_seconds (int): Time in seconds before token expiration to refresh the token. Defaults to 300 seconds.
+        """
+        if hasattr(self, "client") and isinstance(self.client, requests.Session):
+            with self.token_lock:
+                if datetime.now() >= (
+                    self.token_expiration - timedelta(seconds=threshold_seconds)
+                ):
+                    self._initialize_access_token()
 
     def _fetch_access_token(self):
         """
@@ -129,7 +138,7 @@ class FabricPowerBIClient:
             dict: The token response containing the access token and its expiration time.
         """
         response = self.client.post(
-            f"https://login.microsoftonline.com/{self.tenant_id}/oauth2/v2.0/token",
+            f"https://login.microsoftonline.com/{self.__tenant_id}/oauth2/v2.0/token",
             data=self._build_token_payload(),
         )
         response.raise_for_status()
@@ -145,19 +154,19 @@ class FabricPowerBIClient:
         Raises:
             ValueError: If neither client_secret nor both username and password are provided.
         """
-        if self.client_secret:
+        if self.__client_secret:
             return {
                 "grant_type": "client_credentials",
-                "client_id": self.client_id,
-                "client_secret": self.client_secret,
+                "client_id": self.__client_id,
+                "client_secret": self.__client_secret,
                 "scope": self._get_scope(),
             }
-        elif self.username and self.password:
+        elif self.__username and self.__password:
             return {
                 "grant_type": "password",
-                "client_id": self.client_id,
-                "username": self.username,
-                "password": self.password,
+                "client_id": self.__client_id,
+                "username": self.__username,
+                "password": self.__password,
                 "scope": self._get_scope(),
             }
         else:
@@ -174,6 +183,12 @@ class FabricPowerBIClient:
         """
         base_url = self.BASE_URLS[self.client_type]
         return f"{base_url.rstrip('/')}/.default"
+    
+    def _update_authorization_header(self):
+        """
+        Updates the Authorization header with the new access token.
+        """
+        self.client.headers.update({"Authorization": f"Bearer {self.__access_token}"})
 
     def _generate_invalid_client_type_message(self):
         """
@@ -201,10 +216,11 @@ class FabricPowerBIClient:
             Exception: If the maximum number of retries is reached or an unrecoverable error occurs.
         """
         max_retries = 5
-        retry_delay = 10  # Initial delay in seconds
+        retry_delay = 10
         retried_401 = False  # Flag to track 401 retry
 
         for attempt in range(max_retries):
+            self._ensure_token_valid()
             response = request_func(*args, **kwargs)
 
             if response.status_code < 400:
@@ -213,9 +229,7 @@ class FabricPowerBIClient:
             if response.status_code == 401 and not retried_401:
                 # Unauthorized, try refreshing the token once
                 retried_401 = True
-                self.access_token = None
-                self._initialize_access_token()  # Refresh the token
-                self._update_authorization_header()  # Update the Authorization header
+                self._initialize_access_token()
                 continue  # Retry the request with the new token
 
             if response.status_code == 429 and attempt < max_retries - 1:
@@ -233,12 +247,6 @@ class FabricPowerBIClient:
             response.raise_for_status()
 
         raise Exception("Max retries reached. Request failed.")
-
-    def _update_authorization_header(self):
-        """
-        Updates the Authorization header with the new access token.
-        """
-        self.client.headers.update({"Authorization": f"Bearer {self.access_token}"})
 
     def request(self, method, url, return_json=False, **kwargs):
         """
@@ -265,20 +273,7 @@ class FabricPowerBIClient:
             url = f"{base_url.rstrip('/')}/{url.lstrip('/')}"
 
         request_func = getattr(self.client, method.lower())
-        all_items = []
-        params = kwargs.get("params", {})
-
-        def get_data_key(data):
-            """
-            Determines the key to use for extracting data from the response.
-
-            Args:
-                data (dict): The JSON response data.
-
-            Returns:
-                str: The key used to extract data, either 'value' or 'data'.
-            """
-            return next((key for key in ["value", "data"] if key in data), None)
+        all_items, params = [], kwargs.get("params", {})
 
         while True:
             response = self._make_request_with_retry(request_func, url, **kwargs)
@@ -288,13 +283,12 @@ class FabricPowerBIClient:
             except ValueError:
                 data = {}
 
-            continuation_token = data.get("continuationToken")
-
             # Extract and accumulate items
-            data_key = get_data_key(data)
+            data_key = next((key for key in ["value", "data"] if key in data), None)
             if data_key:
                 all_items.extend(data[data_key])
 
+            continuation_token = data.get("continuationToken")
             if not continuation_token:
                 break
 
@@ -309,10 +303,9 @@ class FabricPowerBIClient:
             if all_items:
                 # Update the original response content
                 data[data_key] = all_items
-
                 response._content = json.dumps(data).encode("utf-8")
 
-            return response
+        return response
 
     @classmethod
     def request_with_client(cls, method, url, return_json=False, client=None, **kwargs):
