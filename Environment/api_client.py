@@ -45,12 +45,12 @@ class FabricPowerBIClient:
 
     def __init__(
         self,
-        tenant_id=None,
-        client_id=None,
-        client_secret=None,
-        username=None,
-        password=None,
-        client_type="FabricRestClient",
+        tenant_id: str = None,
+        client_id: str = None,
+        client_secret: str = None,
+        username: str = None,
+        password: str = None,
+        client_type: str = "FabricRestClient",
     ):
         """
         Initializes the FabricPowerBIClient with optional authentication parameters.
@@ -71,7 +71,7 @@ class FabricPowerBIClient:
         self.__password = password
         self.__access_token = None
         self.token_expiration = None
-        self.token_lock = Lock()  # Lock to manage concurrent access to the toke
+        self.token_lock = Lock()  # Lock to manage concurrent access to the token
 
         if tenant_id and client_id and (client_secret or (username and password)):
             self._initialize_custom_client()
@@ -116,7 +116,7 @@ class FabricPowerBIClient:
             self.token_expiration = datetime.now() + timedelta(seconds=expires_in)
             self._update_authorization_header()
 
-    def _ensure_token_valid(self, threshold_seconds=300):
+    def _ensure_token_valid(self, threshold_seconds: int = 300):
         """
         Checks if the token is nearing expiration and refreshes it if necessary.
 
@@ -144,7 +144,7 @@ class FabricPowerBIClient:
         response.raise_for_status()
         return response.json()
 
-    def _build_token_payload(self):
+    def _build_token_payload(self) -> dict:
         """
         Builds the payload for the token request based on provided credentials.
 
@@ -174,7 +174,7 @@ class FabricPowerBIClient:
                 "Either client_secret or both username and password must be provided"
             )
 
-    def _get_scope(self):
+    def _get_scope(self) -> str:
         """
         Determines the scope based on the client type.
 
@@ -183,14 +183,14 @@ class FabricPowerBIClient:
         """
         base_url = self.BASE_URLS[self.client_type]
         return f"{base_url.rstrip('/')}/.default"
-    
+
     def _update_authorization_header(self):
         """
         Updates the Authorization header with the new access token.
         """
         self.client.headers.update({"Authorization": f"Bearer {self.__access_token}"})
 
-    def _generate_invalid_client_type_message(self):
+    def _generate_invalid_client_type_message(self) -> str:
         """
         Generates the error message for an invalid client type.
 
@@ -248,7 +248,7 @@ class FabricPowerBIClient:
 
         raise Exception("Max retries reached. Request failed.")
 
-    def request(self, method, url, return_json=False, **kwargs):
+    def request(self, method: str, url: str, return_json: bool = False, **kwargs):
         """
         Makes an HTTP request using either the custom client or the sempy client.
         Automatically handles pagination if a continuationToken is present in the response.
@@ -308,7 +308,9 @@ class FabricPowerBIClient:
         return response
 
     @classmethod
-    def request_with_client(cls, method, url, return_json=False, client=None, **kwargs):
+    def request_with_client(
+        cls, method: str, url: str, return_json: bool = False, client=None, **kwargs
+    ):
         """
         Class method to make a request with an existing client instance.
 
