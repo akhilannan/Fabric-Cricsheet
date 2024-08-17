@@ -24,7 +24,6 @@ class AzureAPIClient:
 
     Methods:
         __init__: Initializes the client with authentication parameters and client type.
-        _set_base_url: Returns the base URL for the API client based on the client type.
         _initialize_client: Initializes the API client based on provided credentials and client type.
         _initialize_custom_client: Initializes the client using requests.Session and sets up authentication.
         _initialize_sempy_client: Initializes the sempy client for FabricRestClient and PowerBIRestClient.
@@ -32,6 +31,7 @@ class AzureAPIClient:
         _ensure_token_valid: Ensures the access token is still valid or refreshes it if close to expiration.
         _fetch_access_token: Fetches the access token from the OAuth2 endpoint.
         _build_token_payload: Builds the payload for the token request based on provided credentials.
+        _get_base_url: Returns the base URL for the API client based on the client type.
         _get_scope: Determines the scope based on the client type.
         _update_authorization_header: Updates the Authorization header with the new access token.
         _generate_invalid_client_type_message: Generates the error message for an invalid client type.
@@ -50,26 +50,27 @@ class AzureAPIClient:
     def __init__(
         self,
         client_type: str = "FabricRestClient",
+        base_url: str = None,
         tenant_id: str = None,
         client_id: str = None,
         client_secret: str = None,
         username: str = None,
         password: str = None,
-        base_url: str = None,
     ):
         """
         Initializes the AzureAPIClient with authentication parameters and client type.
 
         Args:
             client_type (str): Type of client (e.g., 'FabricRestClient', 'PowerBIRestClient', 'MicrosoftGraphClient', 'AzureManagementClient', 'Other'). Defaults to 'FabricRestClient'.
+            base_url (str, optional): Base URL for custom APIs when client_type is 'Other'.
             tenant_id (str, optional): Azure tenant ID for authentication.
             client_id (str, optional): Client ID for OAuth authentication.
             client_secret (str, optional): Client secret for OAuth authentication.
             username (str, optional): Username for OAuth password grant flow.
             password (str, optional): Password for OAuth password grant flow.
-            base_url (str, optional): Base URL for custom APIs when client_type is 'Other'.
         """
         self.client_type = client_type
+        self.base_url = base_url
         self.__tenant_id = tenant_id
         self.__client_id = client_id
         self.__client_secret = client_secret
@@ -79,32 +80,7 @@ class AzureAPIClient:
         self.token_expiration = None
         self.token_lock = Lock()
 
-        self.BASE_URL = self._set_base_url(base_url)
         self._initialize_client()
-
-    def _set_base_url(self, base_url: str):
-        """
-        Returns the base URL for the API client based on the client type.
-
-        Args:
-            base_url (str): Custom base URL for 'Other' client type.
-
-        Returns:
-            str: The base URL for the API client.
-
-        Raises:
-            ValueError: If base_url is missing for 'Other' or client_type is invalid.
-        """
-        if self.client_type == "Other":
-            if not base_url:
-                raise ValueError("base_url is required when client_type is 'Other'")
-            return base_url
-        elif self.client_type in self.BASE_URLS:
-            return self.BASE_URLS[self.client_type]
-        else:
-            raise ValueError(
-                f"Invalid client_type: '{self.client_type}'. Valid values are: {', '.join(self.BASE_URLS.keys())}, or 'Other'."
-            )
 
     def _initialize_client(self):
         """
@@ -222,6 +198,25 @@ class AzureAPIClient:
                 "Either client_secret or both username and password must be provided"
             )
 
+    def _get_base_url(self):
+        """
+        Returns the base URL for the API client based on the client type.
+
+        Returns:
+            str: The base URL for the API client.
+
+        Raises:
+            ValueError: If client_type is invalid or base_url is missing for 'Other'.
+        """
+        if self.client_type == "Other":
+            if not self.base_url:
+                raise ValueError("base_url is required when client_type is 'Other'")
+            return self.base_url
+        elif self.client_type in self.BASE_URLS:
+            return self.BASE_URLS[self.client_type]
+        else:
+            raise ValueError(self._generate_invalid_client_type_message())
+
     def _get_scope(self) -> str:
         """
         Determines the scope based on the client type.
@@ -229,7 +224,7 @@ class AzureAPIClient:
         Returns:
             str: The scope for the token request.
         """
-        base_url = self.BASE_URLS[self.client_type]
+        base_url = self._get_base_url()
         return f"{base_url.rstrip('/')}/.default"
 
     def _update_authorization_header(self):
@@ -246,7 +241,7 @@ class AzureAPIClient:
             str: The error message indicating the invalid client type.
         """
         valid_types = ", ".join(self.BASE_URLS.keys())
-        return f"Invalid client_type '{self.client_type}'. Must be {valid_types}."
+        return f"Invalid client_type '{self.client_type}'. Must be {valid_types}, or 'Other'."
 
     def _make_request_with_retry(self, request_func, *args, **kwargs):
         """
@@ -311,10 +306,7 @@ class AzureAPIClient:
         Returns:
             requests.Response or dict: The response object or JSON data, depending on return_json.
         """
-        # Determine the base URL based on the client type
-        base_url = self.BASE_URLS.get(self.client_type)
-        if not base_url:
-            raise ValueError(self._generate_invalid_client_type_message())
+        base_url = self._get_base_url()
 
         # Prepend base URL if it's not already included in the URL
         if not url.startswith(base_url):
