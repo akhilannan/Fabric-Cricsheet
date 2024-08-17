@@ -49,7 +49,7 @@ class AzureAPIClient:
 
     def __init__(
         self,
-        client_type: str,
+        client_type: str = "FabricRestClient",
         tenant_id: str = None,
         client_id: str = None,
         client_secret: str = None,
@@ -61,7 +61,7 @@ class AzureAPIClient:
         Initializes the AzureAPIClient with authentication parameters and client type.
 
         Args:
-            client_type (str): Type of client (e.g., 'FabricRestClient', 'PowerBIRestClient', 'MicrosoftGraphClient', 'AzureManagementClient', 'Other').
+            client_type (str): Type of client (e.g., 'FabricRestClient', 'PowerBIRestClient', 'MicrosoftGraphClient', 'AzureManagementClient', 'Other'). Defaults to 'FabricRestClient'.
             tenant_id (str, optional): Azure tenant ID for authentication.
             client_id (str, optional): Client ID for OAuth authentication.
             client_secret (str, optional): Client secret for OAuth authentication.
