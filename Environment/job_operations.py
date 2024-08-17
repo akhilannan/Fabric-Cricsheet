@@ -7,7 +7,7 @@ try:
 except ImportError:
     F = None
 
-from api_client import FabricPowerBIClient as FPC
+from api_client import AzureAPIClient as FPC
 from delta_table_operations import (
     read_delta_table,
     create_or_replace_delta_table,

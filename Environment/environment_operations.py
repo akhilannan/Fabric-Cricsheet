@@ -2,7 +2,7 @@ import json
 import os
 import time
 
-from api_client import FabricPowerBIClient as FPC
+from api_client import AzureAPIClient as azure_client
 from fabric_utils import (
     create_lakehouse_if_not_exists,
     get_create_or_update_fabric_item,
@@ -13,7 +13,7 @@ from file_operations import encode_to_base64
 
 
 def update_sparkcompute(
-    environment_id: str, file_path: str, workspace: str = None, client: FPC = None
+    environment_id: str, file_path: str, workspace: str = None, client: azure_client = None
 ) -> str:
     """
     Updates the SparkCompute configuration for the specified environment.
@@ -22,7 +22,7 @@ def update_sparkcompute(
         environment_id (str): ID of the target environment.
         file_path (str): Path to the JSON configuration file.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
-        client (FPC, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+        client (azure_client, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         str: Success message or error details.
@@ -33,7 +33,7 @@ def update_sparkcompute(
             with open(file_path, "r") as json_file:
                 request_body = json.load(json_file)
 
-            response = FPC.request_with_client(
+            response = azure_client.request_with_client(
                 "PATCH",
                 f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/sparkcompute",
                 json=request_body,
@@ -51,7 +51,7 @@ def update_sparkcompute(
 
 
 def publish_staging_environment(
-    environment_id: str, workspace: str = None, client: FPC = None
+    environment_id: str, workspace: str = None, client: azure_client = None
 ) -> str:
     """
     Initiates the publishing process for the specified environment.
@@ -59,7 +59,7 @@ def publish_staging_environment(
     Args:
         environment_id (str): ID of the target environment.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
-        client (FPC, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+        client (azure_client, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         str: Publish status message.
@@ -67,7 +67,7 @@ def publish_staging_environment(
     try:
         workspace_id = resolve_workspace_id(workspace, client=client)
         if environment_id:
-            response = FPC.request_with_client(
+            response = azure_client.request_with_client(
                 "POST",
                 f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/publish",
                 client=client,
@@ -91,7 +91,7 @@ def publish_staging_environment(
 
 
 def get_publish_state(
-    environment_id: str, workspace: str = None, client: FPC = None
+    environment_id: str, workspace: str = None, client: azure_client = None
 ) -> str:
     """
     Retrieves the current publish state of the specified environment.
@@ -99,7 +99,7 @@ def get_publish_state(
     Args:
         environment_id (str): ID of the target environment.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
-        client (FPC, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+        client (azure_client, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         str: Current publish state (e.g., "running", "success", "failed", etc).
@@ -107,7 +107,7 @@ def get_publish_state(
     try:
         workspace_id = resolve_workspace_id(workspace, client=client)
         if environment_id:
-            response = FPC.request_with_client(
+            response = azure_client.request_with_client(
                 "GET",
                 f"/v1/workspaces/{workspace_id}/environments/{environment_id}",
                 return_json=True,
@@ -125,7 +125,7 @@ def upload_files_to_environment(
     environment_id: str,
     file_paths: list[str],
     workspace: str = None,
-    client: FPC = None,
+    client: azure_client = None,
 ) -> dict:
     """
     Uploads one or more library files to the specified environment.
@@ -134,7 +134,7 @@ def upload_files_to_environment(
         environment_id (str): ID of the target environment.
         file_paths (list of str): Path(s) to the library file(s) on the local system.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
-        client (FPC, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+        client (azure_client, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         dict: Dictionary with file paths as keys and success messages or error details as values.
@@ -148,7 +148,7 @@ def upload_files_to_environment(
                 try:
                     with open(file_path, "rb") as file:
                         files = {"file": file}
-                        response = FPC.request_with_client(
+                        response = azure_client.request_with_client(
                             "POST",
                             f"/v1/workspaces/{workspace_id}/environments/{environment_id}/staging/libraries",
                             files=files,
@@ -171,7 +171,7 @@ def upload_files_to_environment(
 
 
 def delete_existing_libraries_and_publish(
-    environment_id: str, workspace: str = None, client: FPC = None
+    environment_id: str, workspace: str = None, client: azure_client = None
 ) -> None:
     """
     Checks for existing custom libraries in the environment, deletes them, and publishes the environment.
@@ -179,7 +179,7 @@ def delete_existing_libraries_and_publish(
     Args:
         environment_id (str): ID of the target environment.
         workspace (str, optional): The name or ID of the workspace. If not provided, it uses the current workspace ID.
-        client (FPC, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+        client (azure_client, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
     """
     workspace_id = resolve_workspace_id(workspace, client=client)
 
@@ -187,7 +187,7 @@ def delete_existing_libraries_and_publish(
 
     try:
         # Check for existing custom libraries
-        response = FPC.request_with_client(
+        response = azure_client.request_with_client(
             "GET", f"{base_endpoint}/libraries", return_json=True, client=client
         )
         custom_libraries = response.get("customLibraries", {})
@@ -203,7 +203,7 @@ def delete_existing_libraries_and_publish(
             print("Deleting existing libraries...")
             # Delete existing libraries
             for file in files_to_delete:
-                FPC.request_with_client(
+                azure_client.request_with_client(
                     "DELETE",
                     f"{base_endpoint}/staging/libraries?libraryToDelete={file}",
                     client=client,

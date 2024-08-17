@@ -5,63 +5,69 @@ from datetime import datetime, timedelta
 from threading import Lock
 
 
-class FabricPowerBIClient:
+class AzureAPIClient:
     """
-    A client for interacting with the Microsoft Fabric and Power BI REST APIs.
+    A versatile client for interacting with various Microsoft and Azure REST APIs.
 
     Attributes:
-        BASE_URLS (dict): Base URLs for Fabric and Power BI API endpoints.
+        BASE_URLS (dict): Base URLs for different API types.
         tenant_id (str, optional): Azure tenant ID for authentication.
         client_id (str, optional): Client ID for authentication.
         client_secret (str, optional): Client secret for authentication.
         username (str, optional): Username for authentication.
         password (str, optional): Password for authentication.
-        client_type (str): The type of client, either 'FabricRestClient' or 'PowerBIRestClient'.
+        client_type (str): The type of client (e.g., 'FabricRestClient', 'PowerBIRestClient', 'MicrosoftGraphClient', 'AzureManagementClient', 'Other').
         access_token (str, optional): Cached access token for API requests.
         token_expiration (datetime, optional): Expiration time for the access token.
         token_lock (Lock): A threading lock to manage concurrent access to the token.
         client (requests.Session or sempy client): Instance of the requests.Session or sempy client.
 
     Methods:
-        __init__: Initializes the client with optional authentication parameters.
-        _initialize_custom_client: Initializes the custom client and sets up the Authorization header.
-        _initialize_sempy_client: Initializes the sempy client if custom client credentials are not provided.
-        _initialize_access_token: Obtains and initializes the access token during client initialization or when needed.
+        __init__: Initializes the client with authentication parameters and client type.
+        _set_base_url: Returns the base URL for the API client based on the client type.
+        _initialize_client: Initializes the API client based on provided credentials and client type.
+        _initialize_custom_client: Initializes the client using requests.Session and sets up authentication.
+        _initialize_sempy_client: Initializes the sempy client for FabricRestClient and PowerBIRestClient.
+        _initialize_access_token: Obtains and initializes the access token.
         _ensure_token_valid: Ensures the access token is still valid or refreshes it if close to expiration.
         _fetch_access_token: Fetches the access token from the OAuth2 endpoint.
         _build_token_payload: Builds the payload for the token request based on provided credentials.
         _get_scope: Determines the scope based on the client type.
+        _update_authorization_header: Updates the Authorization header with the new access token.
         _generate_invalid_client_type_message: Generates the error message for an invalid client type.
         _make_request_with_retry: Makes an API request with retry logic for certain status codes.
-        _update_authorization_header: Updates the Authorization header with the new access token.
-        request: Makes an HTTP request using the custom client or sempy client, handling pagination if needed.
+        request: Makes an HTTP request, handling pagination if needed.
         request_with_client: Class method to make a request with an existing client instance.
     """
 
     BASE_URLS = {
         "FabricRestClient": "https://api.fabric.microsoft.com",
         "PowerBIRestClient": "https://api.powerbi.com",
+        "MicrosoftGraphClient": "https://graph.microsoft.com",
+        "AzureManagementClient": "https://management.azure.com",
     }
 
     def __init__(
         self,
+        client_type: str,
         tenant_id: str = None,
         client_id: str = None,
         client_secret: str = None,
         username: str = None,
         password: str = None,
-        client_type: str = "FabricRestClient",
+        base_url: str = None,
     ):
         """
-        Initializes the FabricPowerBIClient with optional authentication parameters.
+        Initializes the AzureAPIClient with authentication parameters and client type.
 
         Args:
+            client_type (str): Type of client (e.g., 'FabricRestClient', 'PowerBIRestClient', 'MicrosoftGraphClient', 'AzureManagementClient', 'Other').
             tenant_id (str, optional): Azure tenant ID for authentication.
             client_id (str, optional): Client ID for OAuth authentication.
             client_secret (str, optional): Client secret for OAuth authentication.
             username (str, optional): Username for OAuth password grant flow.
             password (str, optional): Password for OAuth password grant flow.
-            client_type (str, optional): Type of client, either 'FabricRestClient' or 'PowerBIRestClient'. Defaults to 'FabricRestClient'.
+            base_url (str, optional): Base URL for custom APIs when client_type is 'Other'.
         """
         self.client_type = client_type
         self.__tenant_id = tenant_id
@@ -71,12 +77,54 @@ class FabricPowerBIClient:
         self.__password = password
         self.__access_token = None
         self.token_expiration = None
-        self.token_lock = Lock()  # Lock to manage concurrent access to the token
+        self.token_lock = Lock()
 
-        if tenant_id and client_id and (client_secret or (username and password)):
-            self._initialize_custom_client()
+        self.BASE_URL = self._set_base_url(base_url)
+        self._initialize_client()
+
+    def _set_base_url(self, base_url: str):
+        """
+        Returns the base URL for the API client based on the client type.
+
+        Args:
+            base_url (str): Custom base URL for 'Other' client type.
+
+        Returns:
+            str: The base URL for the API client.
+
+        Raises:
+            ValueError: If base_url is missing for 'Other' or client_type is invalid.
+        """
+        if self.client_type == "Other":
+            if not base_url:
+                raise ValueError("base_url is required when client_type is 'Other'")
+            return base_url
+        elif self.client_type in self.BASE_URLS:
+            return self.BASE_URLS[self.client_type]
         else:
+            raise ValueError(
+                f"Invalid client_type: '{self.client_type}'. Valid values are: {', '.join(self.BASE_URLS.keys())}, or 'Other'."
+            )
+
+    def _initialize_client(self):
+        """
+        Initializes the API client based on provided credentials and client type.
+
+        Raises:
+            ValueError: If required credentials are missing or client_type is unsupported.
+        """
+        if (
+            self.__tenant_id
+            and self.__client_id
+            and (self.__client_secret or (self.__username and self.__password))
+        ):
+            self._initialize_custom_client()
+        elif self.client_type in ["FabricRestClient", "PowerBIRestClient"]:
             self._initialize_sempy_client()
+        else:
+            raise ValueError(
+                "Please provide the tenant ID, client ID, and either client secret or username and password."
+            )
 
     def _initialize_custom_client(self):
         """
@@ -130,7 +178,7 @@ class FabricPowerBIClient:
                 ):
                     self._initialize_access_token()
 
-    def _fetch_access_token(self):
+    def _fetch_access_token(self) -> dict:
         """
         Fetches the access token from the OAuth2 endpoint.
 
@@ -250,7 +298,7 @@ class FabricPowerBIClient:
 
     def request(self, method: str, url: str, return_json: bool = False, **kwargs):
         """
-        Makes an HTTP request using either the custom client or the sempy client.
+        Makes an HTTP request using the client.
         Automatically handles pagination if a continuationToken is present in the response.
         Returns the final response object with only consolidated data in the content.
 
@@ -317,11 +365,12 @@ class FabricPowerBIClient:
         Args:
             method (str): HTTP method (e.g., 'GET', 'POST').
             url (str): The endpoint URL.
-            client (FabricPowerBIClient, optional): An existing client instance. Defaults to None.
+            return_json (bool): If True, returns the JSON data directly instead of the response object.
+            client (AzureAPIClient, optional): An existing client instance. Defaults to None.
             **kwargs: Additional arguments to pass to the request function.
 
         Returns:
-            requests.Response: The response from the API request.
+            requests.Response or dict: The response from the API request or JSON data, depending on return_json.
         """
         if client is None:
             client = cls()

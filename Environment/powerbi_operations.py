@@ -3,7 +3,7 @@ import json
 import os
 import time
 
-from api_client import FabricPowerBIClient as FPC
+from api_client import AzureAPIClient as azure_client
 from fabric_utils import (
     get_lakehouse_id,
     get_create_or_update_fabric_item,
@@ -15,7 +15,7 @@ from file_operations import get_file_content_as_base64
 
 
 def get_server_db(
-    lakehouse_name: str, workspace: str = None, client: FPC = None
+    lakehouse_name: str, workspace: str = None, client: azure_client = None
 ) -> tuple:
     """
     Retrieves the server and database details for a given lakehouse.
@@ -23,7 +23,7 @@ def get_server_db(
     Args:
         lakehouse_name (str): The name of the lakehouse.
         workspace (str, optional): The name or ID of the workspace. Defaults to the current workspace ID.
-        client (FPC, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+        client (azure_client, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         tuple: A tuple containing the SQL Analytics server connection string and database ID.
@@ -35,7 +35,7 @@ def get_server_db(
     lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id, client=client)
 
     try:
-        response = FPC.request_with_client(
+        response = azure_client.request_with_client(
             "GET",
             f"/v1/workspaces/{workspace_id}/lakehouses/{lakehouse_id}",
             client=client,
@@ -439,7 +439,7 @@ def start_enhanced_refresh(
     retry_count: int = 0,
     apply_refresh_policy: bool = False,
     effective_date: datetime.date = datetime.date.today(),
-    client: FPC = None,
+    client: azure_client = None,
 ) -> str:
     """Starts an enhanced refresh of a semantic model.
 
@@ -453,7 +453,7 @@ def start_enhanced_refresh(
         retry_count (int, optional): The number of times to retry the refresh in case of failure. Defaults to 0.
         apply_refresh_policy (bool, optional): Whether to apply the refresh policy defined in the semantic model. Defaults to False.
         effective_date (datetime.date, optional): The date to use for the refresh. Defaults to today.
-        client (FPC, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+        client (azure_client, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         str: The refresh request ID.
@@ -488,7 +488,7 @@ def start_enhanced_refresh(
 
     try:
         # Make the API call
-        response = FPC.request_with_client(
+        response = azure_client.request_with_client(
             "POST",
             f"/v1.0/myorg/groups/{workspace_id}/datasets/{semantic_model_id}/refreshes",
             json=request_body,
@@ -508,7 +508,7 @@ def get_enhanced_refresh_details(
     semantic_model_name: str,
     refresh_request_id: str,
     workspace: str = None,
-    client: FPC = None,
+    client: azure_client = None,
 ) -> dict:
     """Gets the details of an enhanced refresh operation for a dataset.
 
@@ -516,7 +516,7 @@ def get_enhanced_refresh_details(
         semantic_model_name (str): The name of the semantic model.
         refresh_request_id (str): The ID of the refresh request.
         workspace (str, optional): The ID or name of the workspace where the dataset is located. Defaults to None.
-        client (FPC, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+        client (azure_client, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         dict: The details of the refresh operation with an added 'duration_in_sec' key.
@@ -534,7 +534,7 @@ def get_enhanced_refresh_details(
 
     try:
         # Make the API call
-        refresh_details = FPC.request_with_client(
+        refresh_details = azure_client.request_with_client(
             "GET",
             f"/v1.0/myorg/groups/{workspace_id}/datasets/{semantic_model_id}/refreshes/{refresh_request_id}",
             return_json=True,
@@ -568,7 +568,7 @@ def get_enhanced_refresh_details(
 
 
 def cancel_enhanced_refresh(
-    request_id: str, dataset_id: str, workspace: str = None, client: FPC = None
+    request_id: str, dataset_id: str, workspace: str = None, client: azure_client = None
 ) -> dict:
     """Cancel an enhanced refresh request for a Power BI dataset.
 
@@ -576,7 +576,7 @@ def cancel_enhanced_refresh(
         request_id (str): The ID of the refresh request to cancel.
         dataset_id (str): The ID of the dataset to cancel the refresh for.
         workspace (str, optional): The ID or name of the workspace containing the dataset. Defaults to the current workspace if not provided.
-        client (FPC, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+        client (azure_client, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         dict: The JSON response from the Power BI REST API.
@@ -587,16 +587,12 @@ def cancel_enhanced_refresh(
     workspace_id = resolve_workspace_id(workspace, client=client)
 
     try:
-        # Send the delete request using the FPC.request_with_client method
-        response = FPC.request_with_client(
+        return azure_client.request_with_client(
             "DELETE",
             f"/v1.0/myorg/groups/{workspace_id}/datasets/{dataset_id}/refreshes/{request_id}",
             return_json=True,
             client=client,
         )
-
-        # Return the JSON response as a dictionary
-        return response
     except Exception as e:
         print(f"Error canceling refresh request: {e}")
         raise

@@ -1,10 +1,10 @@
 import os
 import time
 
-from api_client import FabricPowerBIClient as FPC
+from api_client import AzureAPIClient as azure_client
 
 
-def poll_operation_status(operation_id: str, message: str = None, client: FPC = None):
+def poll_operation_status(operation_id: str, message: str = None, client: azure_client = None):
     """
     Polls the status of an operation until it is completed.
 
@@ -16,7 +16,7 @@ def poll_operation_status(operation_id: str, message: str = None, client: FPC = 
     Parameters:
     - operation_id (str): The unique identifier of the operation to check.
     - message (str, optional): A message to print upon success.
-    - client (FPC, optional): An optional pre-initialized client instance.
+    - client (azure_client, optional): An optional pre-initialized client instance.
       If provided, it will be used to make the request.
 
     Raises:
@@ -27,7 +27,7 @@ def poll_operation_status(operation_id: str, message: str = None, client: FPC = 
     - 'Operation succeeded: {message}' if successful
     """
     while True:
-        response = FPC.request_with_client(
+        response = azure_client.request_with_client(
             "GET", f"/v1/operations/{operation_id}", return_json=True, client=client
         )
         status = response.get("status")
@@ -67,7 +67,7 @@ def resolve_workspace_id(workspace: str, client=None) -> str:
         return fabric.resolve_workspace_id(workspace)
     except (ImportError, AttributeError):
         # Fallback logic if sempy or the method isn't available
-        workspaces = FPC.request_with_client(
+        workspaces = azure_client.request_with_client(
             "GET", "/v1/workspaces", return_json=True, client=client
         )
 
@@ -88,7 +88,7 @@ def get_fabric_capacities(client=None) -> list:
     Returns:
         List[Dict[str, Any]]: A list of fabric capacities that are active and do not have SKU 'PP3'.
     """
-    all_capacities = FPC.request_with_client(
+    all_capacities = azure_client.request_with_client(
         "GET", "/v1/capacities", return_json=True, client=client
     )
 
@@ -120,7 +120,7 @@ def get_fabric_items(
     workspace_id = resolve_workspace_id(workspace, client=client)
     params = {"type": item_type} if item_type else {}
 
-    all_items = FPC.request_with_client(
+    all_items = azure_client.request_with_client(
         "GET",
         f"/v1/workspaces/{workspace_id}/items",
         params=params,
@@ -186,7 +186,7 @@ def get_lakehouse_id(lakehouse_name: str, workspace: str = None, client=None) ->
 
 
 def get_or_create_fabric_workspace(
-    workspace_name: str, capacity_id: str = None, client: FPC = None
+    workspace_name: str, capacity_id: str = None, client: azure_client = None
 ) -> str:
     """
     Resolves the workspace ID using the provided workspace name. If resolution fails, checks for capacity ID
@@ -195,7 +195,7 @@ def get_or_create_fabric_workspace(
     Args:
         workspace_name (str): Name of the workspace.
         capacity_id (str, optional): ID of the capacity. Defaults to None.
-        client (FPC, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+        client (azure_client, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
         str: The resolved or newly created workspace ID.
@@ -230,7 +230,7 @@ def get_or_create_fabric_workspace(
         body = {"displayName": workspace_name, "capacityId": capacity_id}
         try:
             # Make the POST request to create the workspace
-            response = FPC.request_with_client(
+            response = azure_client.request_with_client(
                 "POST", "/v1/workspaces", json=body, return_json=True, client=client
             )
 
@@ -249,7 +249,7 @@ def get_create_or_update_fabric_item(
     item_description: str = None,
     old_item_name: str = None,
     workspace: str = None,
-    client: FPC = None,
+    client: azure_client = None,
 ) -> str:
     """
     Gets, creates, or updates a Fabric item within a given workspace.
@@ -262,7 +262,7 @@ def get_create_or_update_fabric_item(
     - old_item_name (str, optional): The old display name of the item for renaming. Default is None.
     - workspace (str, optional): The name or ID of the workspace where the item is to be created or updated.
                                  If not provided, it uses the default workspace ID.
-    - client (FPC, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+    - client (azure_client, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Returns:
     - str: The ID of the item, whether it was newly created, updated, or already existed.
@@ -304,7 +304,7 @@ def get_create_or_update_fabric_item(
         return item_id  # Item exists and doesn't need updating, so just return its ID
 
     # Perform the API request based on the method
-    response = FPC.request_with_client(method, url, json=request_body, client=client)
+    response = azure_client.request_with_client(method, url, json=request_body, client=client)
     status_code = response.status_code
     msg = f"'{item_name}' {item_type} {action}."
 
@@ -495,7 +495,7 @@ def get_delta_tables_in_lakehouse(
     try:
         workspace_id = resolve_workspace_id(workspace, client=client)
         lakehouse_id = get_lakehouse_id(lakehouse_name, workspace_id, client=client)
-        tables = FPC.request_with_client(
+        tables = azure_client.request_with_client(
             "GET",
             f"/v1/workspaces/{workspace_id}/lakehouses/{lakehouse_id}/tables",
             return_json=True,
