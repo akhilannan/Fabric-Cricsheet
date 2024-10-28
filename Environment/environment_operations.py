@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 
 from api_client import AzureAPIClient as azure_client
@@ -13,7 +14,10 @@ from file_operations import encode_to_base64
 
 
 def update_sparkcompute(
-    environment_id: str, file_path: str, workspace: str = None, client: azure_client = None
+    environment_id: str,
+    file_path: str,
+    workspace: str = None,
+    client: azure_client = None,
 ) -> str:
     """
     Updates the SparkCompute configuration for the specified environment.
@@ -291,9 +295,8 @@ def create_or_replace_notebook_from_ipynb(
             if cell["cell_type"] == "code":
                 new_source = []
                 for line in cell["source"]:
-                    for key, value in replacements.items():
-                        if key in line:
-                            line = line.replace(key, value)
+                    for pattern, replacement in replacements.items():
+                        line = re.sub(pattern, replacement, line)
                     new_source.append(line)
                 cell["source"] = new_source
 

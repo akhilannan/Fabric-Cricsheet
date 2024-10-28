@@ -4,7 +4,9 @@ import time
 from api_client import AzureAPIClient as azure_client
 
 
-def poll_operation_status(operation_id: str, message: str = None, client: azure_client = None):
+def poll_operation_status(
+    operation_id: str, message: str = None, client: azure_client = None
+):
     """
     Polls the status of an operation until it is completed.
 
@@ -250,6 +252,7 @@ def get_create_or_update_fabric_item(
     old_item_name: str = None,
     workspace: str = None,
     client: azure_client = None,
+    creation_payload: dict = None,
 ) -> str:
     """
     Gets, creates, or updates a Fabric item within a given workspace.
@@ -263,6 +266,7 @@ def get_create_or_update_fabric_item(
     - workspace (str, optional): The name or ID of the workspace where the item is to be created or updated.
                                  If not provided, it uses the default workspace ID.
     - client (azure_client, optional): An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
+    - creation_payload (dict, optional): Additional creation payload for the item. Default is None.
 
     Returns:
     - str: The ID of the item, whether it was newly created, updated, or already existed.
@@ -276,6 +280,7 @@ def get_create_or_update_fabric_item(
         "type": item_type,
         **({"description": item_description} if item_description else {}),
         **({"definition": item_definition} if item_definition else {}),
+        **({"creationPayload": creation_payload} if creation_payload else {}),
     }
 
     # Initialize URL and method
@@ -304,7 +309,9 @@ def get_create_or_update_fabric_item(
         return item_id  # Item exists and doesn't need updating, so just return its ID
 
     # Perform the API request based on the method
-    response = azure_client.request_with_client(method, url, json=request_body, client=client)
+    response = azure_client.request_with_client(
+        method, url, json=request_body, client=client
+    )
     status_code = response.status_code
     msg = f"'{item_name}' {item_type} {action}."
 
@@ -347,7 +354,7 @@ def extract_item_name_and_type_from_path(parent_folder_path: str):
 
 
 def create_lakehouse_if_not_exists(
-    lh_name: str, workspace: str = None, client=None
+    lh_name: str, workspace: str = None, client=None, enable_schemas: bool = True
 ) -> str:
     """
     Creates a lakehouse with the given name if it does not exist already.
@@ -357,7 +364,7 @@ def create_lakehouse_if_not_exists(
         workspace (str, optional): The name or ID of the workspace where the lakehouse is to be created.
                                    If not provided, it uses the default workspace ID.
         client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
-
+        enable_schemas (bool, optional): Whether to enable schemas for the lakehouse. Default is True.
 
     Returns:
         str: The ID of the lakehouse.
@@ -365,7 +372,11 @@ def create_lakehouse_if_not_exists(
     workspace_id = resolve_workspace_id(workspace, client=client)
 
     return get_create_or_update_fabric_item(
-        item_name=lh_name, item_type="Lakehouse", workspace=workspace_id, client=client
+        item_name=lh_name,
+        item_type="Lakehouse",
+        workspace=workspace_id,
+        client=client,
+        creation_payload={"enableSchemas": enable_schemas},
     )
 
 
@@ -456,6 +467,16 @@ def get_lakehouse_path(
         return os.path.join(local_path, folder_type)
 
 
+def get_lakehouse_table_path(
+    lakehouse_name: str, table_name: str, schema_name: str = None
+) -> str:
+    """Constructs the path to a delta table in a lakehouse."""
+    path = get_lakehouse_path(lakehouse_name)
+    return os.path.join(
+        *([path] + ([schema_name] if schema_name else []) + [table_name])
+    )
+
+
 def delete_path(lakehouse, item, folder_type="Tables", client=None):
     """Deletes the folder or file if it exists.
 
@@ -510,3 +531,38 @@ def get_delta_tables_in_lakehouse(
         delta_tables = []
 
     return delta_tables
+
+
+def convert_to_json(refresh_objects: str, target: str = "powerbi") -> list:
+    """Converts a string of refresh objects to a list of dictionaries.
+
+    Args:
+        refresh_objects (str): A string of refresh objects, separated by "|".
+            PowerBI format: "Table1:Partition1,Partition2|Table2"
+            Lakehouse format: "Schema1:Table1,Table2|Schema2" or "Schema1|Schema2"
+        target (str): Target platform - "powerbi" or "lakehouse". Defaults to "powerbi".
+
+    Returns:
+        list: A list of dictionaries.
+        PowerBI: each with a "table" key and an optional "partition" key.
+        Lakehouse: each with a "schema" key and optional "table" key.
+    """
+    if not refresh_objects or refresh_objects == "All":
+        return []
+
+    result = []
+    is_powerbi = target.lower() == "powerbi"
+
+    for item in refresh_objects.split("|"):
+        parts = item.split(":")
+        first_part = parts[0].strip()
+
+        if len(parts) == 1:
+            result.append({"table" if is_powerbi else "schema": first_part})
+        else:
+            key1, key2 = ("table", "partition") if is_powerbi else ("schema", "table")
+            result.extend(
+                [{key1: first_part, key2: val.strip()} for val in parts[1].split(",")]
+            )
+
+    return result

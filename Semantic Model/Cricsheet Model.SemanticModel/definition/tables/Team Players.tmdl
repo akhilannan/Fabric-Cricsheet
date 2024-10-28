@@ -1,6 +1,6 @@
 table 'Team Players'
 	lineageTag: e8305a30-4cd9-4ef2-a01e-5b2d59eb3914
-	sourceLineageTag: [dbo].[t_fact_team_players]
+	sourceLineageTag: [reporting].[t_fact_team_players]
 
 	measure 'Match Result' =
 			
@@ -226,7 +226,7 @@ table 'Team Players'
 		mode: directLake
 		source
 			entityName: t_fact_team_players
-			schemaName: dbo
+			schemaName: reporting
 			expressionSource: DatabaseQuery
 
 	annotation IsTableInBiModel = True

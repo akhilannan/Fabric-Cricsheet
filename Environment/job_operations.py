@@ -17,12 +17,13 @@ from delta_table_operations import (
 from fabric_utils import get_item_id, get_lakehouse_id, resolve_workspace_id
 
 
-def get_job_id(lakehouse: str = None, table: str = None, job_name: str = None) -> str:
+def get_job_id(lakehouse: str = None, table: str = None, schema: str = None, job_name: str = None) -> str:
     """Returns a job id based on the delta table.
 
     Args:
         lakehouse (str, optional): The lakehouse of the delta table. Defaults to None.
         table (str, optional): The name of the delta table. Defaults to None.
+        schema (str, optional): The name of the schema. Defaults to None.
         job_name (str, optional): The name of the job. Defaults to None
 
     Returns:
@@ -32,7 +33,7 @@ def get_job_id(lakehouse: str = None, table: str = None, job_name: str = None) -
     if lakehouse and table and job_name:
         try:
             job_id = (
-                read_delta_table(lakehouse, table)
+                read_delta_table(lakehouse, table, schema)
                 .filter(F.col("job_name") == job_name)
                 .orderBy(F.desc("start_time"))
                 .first()["job_id"]
@@ -52,6 +53,7 @@ def insert_or_update_job_table(
     request_id: str = None,
     message: str = None,
     duration: int = None,
+    schema_name: str = None,
 ) -> None:
     """
     Inserts or updates a row in the job table with the given parameters.
@@ -63,7 +65,9 @@ def insert_or_update_job_table(
         parent_job_name: Name of the parent job. Defaults to None.
         request_id: The request ID for the job. If None, a random job ID will be generated. Defaults to None.
         status: The status of the job. If "InProgress", the job will be inserted as a new row in the table, otherwise updated. Defaults to "InProgress".
-        message: Captures error message or other messaages if any
+        message: Captures error message or other messages if any
+        duration: Duration of the job in seconds (used to calculate end_time if applicable).
+        schema_name: Schema name to be used in the delta table operations. Defaults to None.
     """
     # Check if lakehouse_name is None and return None if it is
     if lakehouse_name is None:
@@ -74,10 +78,10 @@ def insert_or_update_job_table(
     job_id = request_id or (
         get_job_id()
         if status == "InProgress"
-        else get_job_id(lakehouse_name, table_name, job_name)
+        else get_job_id(lakehouse_name, table_name, schema_name, job_name)
     )
     parent_job_id = (
-        get_job_id(lakehouse_name, table_name, parent_job_name)
+        get_job_id(lakehouse_name, table_name, schema_name, parent_job_name)
         if parent_job_name
         else None
     )
@@ -101,7 +105,9 @@ def insert_or_update_job_table(
 
     # Insert or update the job table based on the status column
     if status == "InProgress":
-        create_or_replace_delta_table(job_df, lakehouse_name, table_name, "append")
+        create_or_replace_delta_table(
+            job_df, lakehouse_name, table_name, schema_name, "append"
+        )
     else:
         job_df = job_df.withColumn(
             "end_time", F.lit(datetime.datetime.today().replace(microsecond=0))
@@ -116,7 +122,12 @@ def insert_or_update_job_table(
             "message": "s.message",
         }
         upsert_delta_table(
-            lakehouse_name, table_name, job_df, merge_condition, update_condition
+            lakehouse_name,
+            table_name,
+            job_df,
+            merge_condition,
+            schema_name,
+            update_condition,
         )
 
 
@@ -142,6 +153,7 @@ def execute_dag(dag):
 def execute_and_log(
     function: callable,
     log_lakehouse: str = None,
+    log_schema: str = None,
     job_name: str = None,
     job_category: str = None,
     parent_job_name: str = None,
@@ -153,8 +165,9 @@ def execute_and_log(
     Args:
         function: The function to execute.
         log_lakehouse: The name of the lakehouse to log to.
+        log_schema: Schema name to be used in the delta table operations. Defaults to None.
         job_name: The name of the job to log.
-        job_category: Category of a job
+        job_category: Category of a job.
         parent_job_name: The name of the parent job, if any.
         request_id: The request ID for the job, if any.
         **kwargs: The keyword arguments to pass to the function.
@@ -166,37 +179,41 @@ def execute_and_log(
         Exception: If the function execution fails.
     """
     result = None
-    # check if log_lakehouse is None
+    # Check if log_lakehouse is provided
     if log_lakehouse is not None:
-        # call the insert_or_update_job_table function
+        # Call the insert_or_update_job_table function
         insert_or_update_job_table(
             lakehouse_name=log_lakehouse,
             job_name=job_name,
             job_category=job_category,
             parent_job_name=parent_job_name,
             request_id=request_id,
+            schema_name=log_schema,  # Pass log_schema here
         )
     try:
-        result = function(
-            **kwargs
-        )  # assign the result of the function call to a variable
-        # check if log_lakehouse is None
+        # Execute the function and store the result
+        result = function(**kwargs)
+
+        # Log completion if log_lakehouse is provided
         if log_lakehouse is not None:
-            # call the insert_or_update_job_table function
             insert_or_update_job_table(
-                lakehouse_name=log_lakehouse, job_name=job_name, status="Completed"
+                lakehouse_name=log_lakehouse,
+                job_name=job_name,
+                status="Completed",
+                schema_name=log_schema,  # Pass log_schema here
             )
     except Exception as e:
         msg = str(e)
         status = "Completed" if msg == "No new data" else "Failed"
-        # check if log_lakehouse is None
+
+        # Log failure if log_lakehouse is provided
         if log_lakehouse is not None:
-            # call the insert_or_update_job_table function
             insert_or_update_job_table(
                 lakehouse_name=log_lakehouse,
                 job_name=job_name,
                 status=status,
                 message=msg,
+                schema_name=log_schema,  # Pass log_schema here
             )
         raise e
     return result

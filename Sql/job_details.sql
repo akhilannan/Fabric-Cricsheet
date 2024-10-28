@@ -6,9 +6,9 @@ WITH latest_parant
                            ORDER BY start_time DESC) = 1 THEN 'Y'
                   ELSE 'N'
                 END AS is_latest_parent
-         FROM   lh_bronze.dbo.t_job
+         FROM   lh_cricsheet.logs.t_job
          WHERE  job_id IN (SELECT parent_job_id
-                           FROM   lh_bronze.dbo.t_job
+                           FROM   lh_cricsheet.logs.t_job
                            WHERE  parent_job_id IS NOT NULL)
                 AND parent_job_id IS NULL),
      base
@@ -16,8 +16,8 @@ WITH latest_parant
                 Datediff(second, jb.start_time, COALESCE(jb.end_time, Getdate())) AS duration_sec,
                 jbp.job_name                                                      AS parent_job_name,
                 lp.is_latest_parent
-         FROM   lh_bronze.dbo.t_job jb
-                LEFT OUTER JOIN lh_bronze.dbo.t_job jbp
+         FROM   lh_cricsheet.logs.t_job jb
+                LEFT OUTER JOIN lh_cricsheet.logs.t_job jbp
                              ON ( jbp.job_id = jb.parent_job_id )
                 LEFT OUTER JOIN latest_parant lp
                              ON ( lp.job_id = jb.job_id

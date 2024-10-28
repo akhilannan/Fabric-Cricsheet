@@ -1,6 +1,7 @@
 # Power BI specific
 **/.pbi/localSettings.json
 **/.pbi/cache.abf
+**/.pbi/editorSettings.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

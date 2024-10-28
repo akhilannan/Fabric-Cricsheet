@@ -1,7 +1,11 @@
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/bookmark/1.0.0/schema.json",
-  "name": "Bookmarkcc77e52ca60c53a9e2c6",
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/bookmark/1.2.0/schema.json",
   "displayName": "Worm",
+  "name": "Bookmarkcc77e52ca60c53a9e2c6",
+  "options": {
+    "targetVisualNames": [],
+    "suppressData": true
+  },
   "explorationState": {
     "version": "1.3",
     "activeSection": "ReportSectioncf5fb5cca47411121f5a",
@@ -3295,9 +3299,5 @@
         ]
       }
     }
-  },
-  "options": {
-    "targetVisualNames": [],
-    "suppressData": true
   }
 }

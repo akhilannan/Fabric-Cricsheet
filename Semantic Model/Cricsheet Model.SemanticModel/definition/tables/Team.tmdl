@@ -1,6 +1,6 @@
 table Team
 	lineageTag: 0d20bff5-3368-4e28-afa4-6d4cb6b85797
-	sourceLineageTag: [dbo].[t_dim_team]
+	sourceLineageTag: [reporting].[t_dim_team]
 
 	column team_id
 		dataType: int64
@@ -29,7 +29,7 @@ table Team
 		mode: directLake
 		source
 			entityName: t_dim_team
-			schemaName: dbo
+			schemaName: reporting
 			expressionSource: DatabaseQuery
 
 	annotation IsTableInBiModel = True

@@ -10,6 +10,7 @@ from fabric_utils import (
     get_item_id,
     extract_item_name_and_type_from_path,
     resolve_workspace_id,
+    convert_to_json
 )
 from file_operations import get_file_content_as_base64
 
@@ -114,20 +115,23 @@ def update_model_expression(
         )
 
 
-def update_model_database_expression(
-    path, fabric_connection_string, sql_analytics_endpoint_id
+def update_semantic_model_configuration(
+    path,
+    fabric_connection_string: str = None,
+    sql_analytics_endpoint_id: str = None,
+    schema_name: str = None,
 ):
     """
-    Updates database connection strings in files at the specified path.
+    Updates database connection strings and/or schema names in semantic model files.
 
-    Replaces occurrences of `Sql.Database("server", "database")` with
-    `Sql.Database("{fabric_connection_string}", "{sql_analytics_endpoint_id}")` in files
-    with `.tmdl`, `.bim`, or `.json` extensions.
+    Updates database connection strings (Sql.Database) and/or schema references
+    (sourceLineageTag and schemaName) in .tmdl, .bim, or .json files.
 
     Args:
-        path (str): File or directory path.
-        fabric_connection_string (str): New connection string.
-        sql_analytics_endpoint_id (str): New analytics endpoint ID.
+        path (str): File or directory path to semantic model files.
+        fabric_connection_string (str, optional): New connection string. If None, connection string won't be updated.
+        sql_analytics_endpoint_id (str, optional): New analytics endpoint ID. If None, endpoint ID won't be updated.
+        schema_name (str, optional): New schema name to replace existing schema names.
     """
     VALID_EXTENSIONS = (".tmdl", ".bim", ".json")
 
@@ -136,14 +140,38 @@ def update_model_database_expression(
     def update_file(file_path):
         with open(file_path, "r+", encoding="utf-8") as f:
             content = f.read()
-            pattern = r'Sql\.Database\("([^"]+)",\s"([^"]+)"\)'
-            replacement = f'Sql.Database("{fabric_connection_string}", "{sql_analytics_endpoint_id}")'
-            new_content = re.sub(pattern, replacement, content)
+            new_content = content
+
+            # Update database connection string only if both parameters are provided
+            if fabric_connection_string and sql_analytics_endpoint_id:
+                db_pattern = r'Sql\.Database\("([^"]+)",\s*"([^"]+)"\)'
+                db_replacement = f'Sql.Database("{fabric_connection_string}", "{sql_analytics_endpoint_id}")'
+                new_content = re.sub(db_pattern, db_replacement, new_content)
+
+            # Update schema name if schema_name is provided
+            if schema_name:
+                # Single pattern that matches [schema_name]. in both formats
+                schema_lineage_pattern = r"\[(\w+)\]\."
+                # Single pattern that matches schema_name in both formats
+                schema_name_pattern = r'(?:schemaName"?\s*:\s*"?)(\w+)(?:"|(?:\s|$))'
+
+                # Perform replacements
+                new_content = re.sub(
+                    schema_lineage_pattern, f"[{schema_name}].", new_content
+                )
+                new_content = re.sub(
+                    schema_name_pattern,
+                    lambda m: m.group(0).replace(m.group(1), schema_name),
+                    new_content,
+                )
+
+            # Write changes if content has been modified
             if new_content != content:
                 f.seek(0)
                 f.write(new_content)
                 f.truncate()
-                print(f"Updated: {os.path.basename(file_path)}")
+                relative_path = os.path.relpath(file_path, path)
+                print(f"Updated: {os.path.join(os.path.basename(path), relative_path)}")
                 return True
         return False
 
@@ -163,7 +191,7 @@ def update_model_database_expression(
         print(f"Invalid path: {path}")
 
     if not updated:
-        print("No database expressions were updated in any files.")
+        print("No changes were made to any files.")
 
 
 def update_definition_pbir(folder_path: str, dataset_id: str) -> None:
@@ -317,15 +345,23 @@ def create_powerbi_item_definition(parent_folder_path: str) -> dict:
 
 
 def create_or_replace_semantic_model(
-    model_path: str, lakehouse_name: str = None, workspace: str = None, client=None
+    model_path: str,
+    lakehouse_name: str = None,
+    schema_name: str = None,
+    workspace: str = None,
+    client=None,
 ) -> None:
     """
     Create or replace a Power BI semantic model from a given path.
 
     Args:
         model_path (str): The path to the folder containing the semantic model.
-            lakehouse_name (str, optional): The name of the lakehouse to get the server and database information. If not provided, the model expression will not be updated.
-        workspace (str, optional): The ID or name of the workspace to which the semantic model will be deployed. If not provided, defaults to the current workspace.
+        lakehouse_name (str, optional): The name of the lakehouse to get the server and database information.
+            If not provided, the model expression will not be updated.
+        schema_name (str, optional): The new schema name to replace in the model.
+            If not provided, schema names will not be updated.
+        workspace (str, optional): The ID or name of the workspace to which the semantic model will be deployed.
+            If not provided, defaults to the current workspace.
         client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
 
     Raises:
@@ -344,10 +380,13 @@ def create_or_replace_semantic_model(
         # Get item name and type
         item_name, item_type = extract_item_name_and_type_from_path(model_path)
 
-        # If lakehouse_name is provided, update the model expression
-        if lakehouse_name:
-            server, db = get_server_db(lakehouse_name, workspace_id, client=client)
-            update_model_database_expression(model_path, server, db)
+        # If lakehouse_name is provided, update the model expression and/or schema
+        if lakehouse_name or schema_name:
+            server = None
+            db = None
+            if lakehouse_name:
+                server, db = get_server_db(lakehouse_name, workspace_id, client=client)
+            update_semantic_model_configuration(model_path, server, db, schema_name)
 
         # Prepare the request body based on the model path
         model_definition = create_powerbi_item_definition(model_path)
@@ -602,6 +641,7 @@ def refresh_and_wait(
     dataset_list: list[str],
     workspace=None,
     logging_lakehouse: str = None,
+    logging_schema: str = None,
     parent_job_name: str = None,
     job_category: str = "Adhoc",
     client=None,
@@ -613,6 +653,7 @@ def refresh_and_wait(
       dataset_list (list[str]): List of datasets to refresh.
       workspace (str, optional): The ID or name of the workspace where the datasets are located. Defaults to the current workspace if not provided.
       logging_lakehouse (str, optional): The name of the lakehouse where the job information will be logged. Defaults to None.
+      logging_schema (str, optional): The schema name for logging. Defaults to None.
       parent_job_name (str, optional): The name of the parent job that triggered the refresh. Defaults to None.
       job_category (str, optional): The category of the job. Defaults to "Adhoc".
       client: An optional pre-initialized client instance. If provided, it will be used instead of initializing a new one.
@@ -652,6 +693,7 @@ def refresh_and_wait(
                 parent_job_name=parent_job_name,
                 request_id=request_id,
                 job_category=job_category,
+                schema_name=logging_schema,  # Pass logging_schema here
             )
 
     # Print the datasets that do not exist
@@ -660,9 +702,7 @@ def refresh_and_wait(
         print(f"The following datasets do not exist: {', '.join(invalid_datasets)}")
 
     # Loop until all the requests are completed
-    request_status_dict = (
-        {}
-    )  # Initialize an empty dictionary to store the request status of each dataset
+    request_status_dict = {}
     while True:
         for dataset, request_id in request_ids.copy().items():
             # Get the status and details of the current request
@@ -685,11 +725,10 @@ def refresh_and_wait(
                         duration=duration,
                         job_category=job_category,
                         message=msg,
+                        schema_name=logging_schema,
                     )
                 print(refresh_details)
-                request_status_dict[dataset] = (
-                    request_status  # Store the status in the dictionary
-                )
+                request_status_dict[dataset] = request_status
                 del request_ids[dataset]
 
         # If there are no more requests, exit the loop
@@ -706,43 +745,5 @@ def refresh_and_wait(
                     f"The following datasets failed to refresh: {', '.join(failed_datasets)}"
                 )
             break  # Exit the loop
-        # Otherwise, wait for 30 seconds before checking again
         else:
             time.sleep(30)
-
-
-def convert_to_json(refresh_objects: str) -> list:
-    """Converts a string of refresh objects to a list of dictionaries.
-
-    Args:
-        refresh_objects (str): A string of refresh objects, separated by "|".
-            Each refresh object consists of a table name and optional partitions, separated by ":".
-            Partitions are comma-separated.
-            eg. "Table1:Partition1,Partition2|Table2"
-
-    Returns:
-        list: A list of dictionaries, each with a "table" key and an optional "partition" key.
-    """
-    result = []  # Initialize an empty list to store the converted dictionaries
-    if refresh_objects is None or refresh_objects == "All":
-        return result  # Return an empty list if the input is None or "All"
-    for item in refresh_objects.split(
-        "|"
-    ):  # Loop through each refresh object, separated by "|"
-        table, *partitions = item.split(
-            ":"
-        )  # Split the item by ":" and assign the first element to table and the rest to partitions
-        if partitions:  # If there are any partitions
-            # Extend the result list with a list comprehension that creates a dictionary for each partition
-            # The dictionary has the table name and the partition name as keys
-            # The partition name is stripped of any leading or trailing whitespace
-            result.extend(
-                [
-                    {"table": table, "partition": partition.strip()}
-                    for partition in ",".join(partitions).split(",")
-                ]
-            )
-        else:  # If there are no partitions
-            # Append a dictionary with only the table name as a key to the result list
-            result.append({"table": table})
-    return result  # Return the final list of dictionaries

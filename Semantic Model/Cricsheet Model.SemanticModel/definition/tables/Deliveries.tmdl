@@ -1,6 +1,6 @@
 table Deliveries
 	lineageTag: d9374cd6-a1e5-4e8a-b020-3caccc840434
-	sourceLineageTag: [dbo].[t_fact_deliveries]
+	sourceLineageTag: [reporting].[t_fact_deliveries]
 
 	measure '5 Wickets #' =
 			
@@ -1266,7 +1266,7 @@ table Deliveries
 		mode: directLake
 		source
 			entityName: t_fact_deliveries
-			schemaName: dbo
+			schemaName: reporting
 			expressionSource: DatabaseQuery
 
 	annotation IsTableInBiModel = True

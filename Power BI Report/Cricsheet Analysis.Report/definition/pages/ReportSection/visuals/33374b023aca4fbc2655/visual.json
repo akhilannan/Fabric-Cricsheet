@@ -1,12 +1,12 @@
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/1.0.0/schema.json",
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/1.3.0/schema.json",
   "name": "33374b023aca4fbc2655",
   "position": {
     "x": 421.89449541284409,
     "y": 19,
     "z": 2000,
-    "width": 344,
     "height": 66,
+    "width": 344,
     "tabOrder": 3000
   },
   "visual": {
@@ -270,6 +270,7 @@
             "Property": "Slicer Filter"
           }
         },
+        "type": "Advanced",
         "filter": {
           "Version": 2,
           "From": [
@@ -305,7 +306,6 @@
             }
           ]
         },
-        "type": "Advanced",
         "howCreated": "User"
       }
     ]

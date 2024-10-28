@@ -4,7 +4,9 @@
     "executorCores": 8,
     "executorMemory": "56g",
     "sparkProperties": {
-      "spark.ms.autotune.enabled": true
+      "spark.ms.autotune.enabled": true,
+      "spark.native.enabled": "true", 
+      "spark.shuffle.manager": "org.apache.spark.shuffle.sort.ColumnarShuffleManager" 
     },
     "runtimeVersion": "1.3"
 }  

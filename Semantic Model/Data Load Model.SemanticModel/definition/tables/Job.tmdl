@@ -1,6 +1,6 @@
 table Job
 	lineageTag: 0cb008d3-c3e2-4148-bdbd-ce31830cc9e9
-	sourceLineageTag: [dbo].[t_job]
+	sourceLineageTag: [logs].[t_job]
 
 	measure 'Duration, sec' =
 			
@@ -41,6 +41,7 @@ table Job
 	measure 'Job #' =
 			
 			COUNTROWS ( 'Job' )
+		formatString: #,0
 		lineageTag: d14906fd-9d66-4174-9894-ed97e98d5d3f
 
 	column 'Job ID'
@@ -129,7 +130,7 @@ table Job
 		mode: directLake
 		source
 			entityName: t_job
-			schemaName: dbo
+			schemaName: logs
 			expressionSource: DatabaseQuery
 
 	annotation PBI_ResultType = Table

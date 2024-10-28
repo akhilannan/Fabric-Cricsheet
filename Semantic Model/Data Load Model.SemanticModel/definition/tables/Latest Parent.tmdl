@@ -33,5 +33,9 @@ table 'Latest Parent'
 
 	column 'Is Latest Parent Job'
 		dataType: string
+		lineageTag: 9c2a8096-35bd-48c1-b99c-7edb779e727e
+		summarizeBy: none
 		sourceColumn: Name
+
+		annotation SummarizationSetBy = Automatic
 

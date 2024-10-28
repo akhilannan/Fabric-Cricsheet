@@ -1,6 +1,6 @@
 table Match
 	lineageTag: bbec02f0-5ade-4f81-a8a2-f43136658d60
-	sourceLineageTag: [dbo].[t_dim_match]
+	sourceLineageTag: [reporting].[t_dim_match]
 
 	column match_id
 		dataType: int64
@@ -181,7 +181,7 @@ table Match
 		mode: directLake
 		source
 			entityName: t_dim_match
-			schemaName: dbo
+			schemaName: reporting
 			expressionSource: DatabaseQuery
 
 	annotation IsTableInBiModel = True

@@ -1,6 +1,6 @@
 table Date
 	lineageTag: 380d78ee-680d-4ef0-9562-7fcb2b739ad2
-	sourceLineageTag: [dbo].[t_dim_date]
+	sourceLineageTag: [reporting].[t_dim_date]
 	dataCategory: Time
 
 	column Date
@@ -67,7 +67,7 @@ table Date
 		mode: directLake
 		source
 			entityName: t_dim_date
-			schemaName: dbo
+			schemaName: reporting
 			expressionSource: DatabaseQuery
 
 	annotation IsTableInBiModel = True

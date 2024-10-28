@@ -1,14 +1,9 @@
 {
   "version": "4.0",
   "datasetReference": {
-    "byPath": null,
-    "byConnection": {
-      "connectionString": "Data Source=powerbi://api.powerbi.com/v1.0/myorg/Cricsheet;Initial Catalog=\"Cricsheet Model\";Access Mode=readonly;Integrated Security=ClaimsToken",
-      "pbiServiceModelId": null,
-      "pbiModelVirtualServerName": "sobe_wowvirtualserver",
-      "pbiModelDatabaseName": "dbfdfa43-c623-4b88-8d4c-f3a7854da1c9",
-      "name": "EntityDataSource",
-      "connectionType": "pbiServiceXmlaStyleLive"
-    }
+    "byPath": {
+      "path": "../../Semantic Model/Cricsheet Model.SemanticModel"
+    },
+    "byConnection": null
   }
 }

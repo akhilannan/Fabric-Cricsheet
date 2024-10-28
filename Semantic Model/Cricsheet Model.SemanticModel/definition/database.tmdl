@@ -1,5 +1,3 @@
-database 'Cricsheet Model'
-	id: d03f7040-9b86-4870-a554-087d48a94ebd
+database
 	compatibilityLevel: 1605
-	compatibilityMode: powerBI
 

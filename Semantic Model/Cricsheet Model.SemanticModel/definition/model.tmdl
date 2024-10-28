@@ -5,15 +5,29 @@ model Model
 	discourageImplicitMeasures
 	directLakeBehavior: directLakeOnly
 
-annotation __PBI_TimeIntelligenceEnabled = 1
-
-annotation PBIDesktopVersion = 2.125.7166.6 (Main)
-
 annotation TabularEditor_SerializeOptions = {"IgnoreInferredObjects":true,"IgnoreInferredProperties":true,"IgnoreTimestamps":true,"SplitMultilineStrings":true,"PrefixFilenames":false,"LocalTranslations":false,"LocalPerspectives":false,"LocalRelationships":false,"Levels":["Data Sources","Perspectives","Relationships","Roles","Shared Expressions","Tables","Tables/Calculation Items","Tables/Columns","Tables/Hierarchies","Tables/Measures","Tables/Partitions","Translations"],"TmdlOptions":{"IncludeRefs":false,"ExpressionTrimStyle":"TrimTrailingWhitespaces"}}
+
+annotation __TEdtr = 1
 
 annotation BestPracticeAnalyzer_IgnoreRules = {"RuleIDs":["ISAVAILABLEINMDX_FALSE_NONATTRIBUTE_COLUMNS","OBJECTS_WITH_NO_DESCRIPTION"]}
 
 annotation BestPracticeAnalyzer_ExternalRuleFiles = ["https://raw.githubusercontent.com/microsoft/Analysis-Services/master/BestPracticeRules/BPARules.json"]
 
-annotation __TEdtr = 1
+annotation __PBI_TimeIntelligenceEnabled = 1
+
+annotation PBIDesktopVersion = 2.137.952.0 (24.10)
+
+annotation PBI_QueryOrder = ["DatabaseQuery"]
+
+annotation PBI_ProTooling = ["RemoteModeling","DevMode"]
+
+ref table Date
+ref table Deliveries
+ref table Match
+ref table Player
+ref table 'Team Match Filter'
+ref table 'Team Players'
+ref table Team
+
+ref cultureInfo en-US
 

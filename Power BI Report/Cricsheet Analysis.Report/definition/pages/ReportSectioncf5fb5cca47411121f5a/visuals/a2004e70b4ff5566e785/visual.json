@@ -1,12 +1,12 @@
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/1.0.0/schema.json",
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/1.3.0/schema.json",
   "name": "a2004e70b4ff5566e785",
   "position": {
-    "height": 302,
-    "width": 571,
     "x": 18,
     "y": 55,
     "z": 6000,
+    "height": 302,
+    "width": 571,
     "tabOrder": 5000
   },
   "visual": {
@@ -370,6 +370,7 @@
             "Property": "innings"
           }
         },
+        "type": "Advanced",
         "filter": {
           "Version": 2,
           "From": [
@@ -404,7 +405,6 @@
             }
           ]
         },
-        "type": "Advanced",
         "howCreated": "User"
       }
     ]

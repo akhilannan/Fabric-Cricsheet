@@ -1,5 +1,5 @@
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/1.0.0/schema.json",
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/1.2.0/schema.json",
   "name": "ReportSectioncf5fb5cca47411121f5a",
   "displayName": "Scorecard",
   "displayOption": "ActualSize",
@@ -62,7 +62,6 @@
       }
     ]
   },
-  "visibility": "HiddenInViewMode",
   "pageBinding": {
     "name": "Pod",
     "type": "Drillthrough",
@@ -109,5 +108,6 @@
         }
       }
     ]
-  }
+  },
+  "visibility": "HiddenInViewMode"
 }
