@@ -1,5 +1,5 @@
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/1.3.0/schema.json",
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/1.5.0/schema.json",
   "name": "ea372ccdeb89137d7d8d",
   "position": {
     "x": 807,
@@ -219,6 +219,7 @@
             "Property": "Team Match Filter Activator"
           }
         },
+        "type": "Categorical",
         "filter": {
           "Version": 2,
           "From": [

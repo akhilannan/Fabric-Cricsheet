@@ -1,9 +1,10 @@
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/1.2.0/schema.json",
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/1.3.0/schema.json",
   "name": "ReportSectionc193534330ead1597ae0",
   "displayName": "Worm Tooltip",
   "displayOption": "ActualSize",
   "height": 160,
   "width": 420,
-  "visibility": "HiddenInViewMode"
+  "visibility": "HiddenInViewMode",
+  "type": "Tooltip"
 }

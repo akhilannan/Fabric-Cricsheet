@@ -1,5 +1,5 @@
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/1.3.0/schema.json",
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/1.5.0/schema.json",
   "name": "33374b023aca4fbc2655",
   "position": {
     "x": 421.89449541284409,
@@ -198,6 +198,7 @@
             "Property": "Event Name"
           }
         },
+        "type": "Categorical",
         "filter": {
           "Version": 2,
           "From": [
