@@ -566,3 +566,63 @@ def convert_to_json(refresh_objects: str, target: str = "powerbi") -> list:
             )
 
     return result
+
+
+def add_workspace_role_assignment(
+    principal_id: str,
+    principal_type: str = "User",
+    role: str = "Admin",
+    workspace: str = None,    
+    client=None,
+) -> None:
+    """
+    Adds a role assignment to a workspace for a specified principal.
+
+    Args:
+        principal_id (str): The ID (object ID) of the principal (user, service principal, or group).
+        principal_type (str, optional): The type of principal ("User", "ServicePrincipal", "Group"). Defaults to "User".
+        role (str, optional): The role to assign ("Admin", "Member", "Contributor", "Viewer"). Defaults to "Admin".
+        workspace (str, optional): The name or ID of the workspace.
+        client: An optional pre-initialized client instance.
+
+    Raises:
+        ValueError: If the role or principal_type is invalid.
+    """
+    if role not in ["Admin", "Member", "Contributor", "Viewer"]:
+        raise ValueError(f"Invalid role: {role}")
+    if principal_type not in ["User", "ServicePrincipal", "Group"]:
+        raise ValueError(f"Invalid principal type: {principal_type}")
+
+    workspace_id = resolve_workspace_id(workspace, client=client)
+    
+    existing_roles = azure_client.request_with_client(
+        "GET",
+        f"/v1/workspaces/{workspace_id}/roleAssignments",
+        return_json=True,
+        client=client,
+    )
+    
+    if any(
+        assignment.get("principal", {}).get("id") == principal_id 
+        and assignment.get("role") == role 
+        for assignment in existing_roles
+    ):
+        print(f"{principal_type} already has {role} role in this workspace")
+        return
+
+    request_body = {
+        "principal": {"id": principal_id, "type": principal_type},
+        "role": role,
+    }
+
+    response = azure_client.request_with_client(
+        "POST",
+        f"/v1/workspaces/{workspace_id}/roleAssignments",
+        json=request_body,
+        client=client,
+    )
+
+    if response.status_code in (200, 201):
+        print(f"Successfully added {principal_type} role assignment as {role}")
+    else:
+        print(f"Failed to add role assignment. Status code: {response.status_code}")
